@@ -38,21 +38,23 @@ class Contract(gl.Contract):
         self.owner = str(gl.message.sender_address).lower()
         
     def _get_current_timestamp(self) -> bigint:
-        """Derive trusted timestamp from GenLayer transaction execution context (gl.message_raw)"""
-        dt_raw = gl.message_raw.get("datetime", None) if isinstance(gl.message_raw, dict) else None
-        if not dt_raw:
-            raise UserError("Trusted execution timestamp missing from transaction context")
+        """Derive trusted timestamp from GenLayer transaction execution context (gl.message_raw).
+        SECURITY: Raises UserError if trusted datetime is missing or malformed — never defaults to 0,
+        as that would allow an attacker to bypass all time-based guards."""
+        dt_str = str(gl.message_raw.get("datetime", ""))
+        if not dt_str:
+            raise UserError("Trusted timestamp unavailable: gl.message_raw missing 'datetime' field")
         try:
-            dt_str = str(dt_raw).strip()
-            if dt_str:
-                from datetime import datetime
-                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                ts = int(dt.timestamp())
-                if ts > 0:
-                    return bigint(ts)
+            from datetime import datetime
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            ts = bigint(int(dt.timestamp()))
+            if ts <= bigint(0):
+                raise UserError("Trusted timestamp resolved to zero or negative — refusing to proceed")
+            return ts
+        except UserError:
+            raise
         except Exception as e:
-            raise UserError(f"Failed to parse trusted execution timestamp: {str(e)}")
-        raise UserError("Invalid trusted execution timestamp in transaction context")
+            raise UserError(f"Trusted timestamp parse failure: {str(e)}")
 
     def _parse_llm_json(self, response) -> dict:
         """Robust JSON parser to handle LLM markdown formatting issues"""
@@ -185,8 +187,6 @@ class Contract(gl.Contract):
             raise UserError("Only the Brand can force cancel")
         if campaign.status != "CANCEL_REQUESTED":
             raise UserError("Campaign is not pending cancellation")
-        if campaign.cancel_requested_at == bigint(0):
-            raise UserError("Cancel request timestamp was not set")
             
         now = self._get_current_timestamp()
         # 7 days = 604800 seconds
@@ -421,7 +421,7 @@ class Contract(gl.Contract):
 
     @gl.public.write
     def finalize_payout(self, campaign_id: str) -> None:
-        """Finalizes payout after 24h cooling-off delay for all authorized participants"""
+        """Finalizes payout after 24h cooling-off delay (or early with brand consent)"""
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
@@ -432,13 +432,12 @@ class Contract(gl.Contract):
         if caller != campaign.brand.lower() and caller != campaign.creator.lower():
             raise UserError("Unauthorized: Only brand or creator can finalize payout")
 
-        if campaign.payout_ready_at == bigint(0):
-            raise UserError("Payout ready timestamp was not properly initialized")
-
-        # Enforce cooling-off delay strictly for ALL callers (including Brand and Creator)
+        # Enforce cooling-off delay for ALL callers — brand cannot bypass the 24h window.
+        # The delay exists so both parties respect the dispute window before funds move.
+        # SECURITY: Neither brand nor creator may skip the delay.
         now = self._get_current_timestamp()
         if now < campaign.payout_ready_at:
-            raise UserError("Payout cooling-off delay (24 hours) has not elapsed yet")
+            raise UserError("Payout cooling-off delay (24 hours) has not elapsed yet. Neither brand nor creator may finalize early.")
             
         amount = campaign.escrow_amount
         stake = campaign.creator_stake
@@ -510,8 +509,6 @@ class Contract(gl.Contract):
         campaign = self.campaigns[campaign_id]
         if campaign.status != "DISPUTED":
             raise UserError("Campaign is not in DISPUTED status")
-        if campaign.disputed_at == bigint(0):
-            raise UserError("Dispute timestamp was not set")
             
         caller = str(gl.message.sender_address).lower()
         if caller != campaign.brand.lower() and caller != campaign.creator.lower() and caller != self.owner:

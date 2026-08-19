@@ -155,7 +155,8 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.assertEqual(int(self.contract.campaigns[self.campaign_id].creator_stake), 200)
 
     def test_02_early_and_unauthorized_payout_attack_reverts(self):
-        """Early withdrawal before 24h cooling-off or by third parties -> Reverts"""
+        """Early withdrawal before 24h cooling-off or by third parties -> Reverts.
+        REGRESSION: Brand is also blocked from finalizing early (not just creator)."""
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
@@ -178,36 +179,48 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         with self.assertRaises(MockUserError):
             self.contract.finalize_payout(self.campaign_id)
 
-        # Brand calls early (+6 hrs) -> MUST ALSO REVERT! (Fixed Steward Finding)
+        # REGRESSION FIX: Brand also cannot finalize early — must wait full 24h like creator
         self.gl.message.sender_address = self.brand_addr
-        with self.assertRaises(MockUserError):
+        self.gl.message_raw = {"datetime": "2026-08-17T06:00:00+00:00"}
+        with self.assertRaises(MockUserError, msg="Brand must NOT bypass 24h payout delay"):
             self.contract.finalize_payout(self.campaign_id)
 
-        # Legitimate payout after 24h -> Succeeds
-        self.gl.message_raw = {"datetime": "2026-08-18T00:01:00+00:00"}
+        # Legitimate payout after 24h -> Succeeds (either brand or creator can finalize)
         self.gl.message.sender_address = self.creator_addr
+        self.gl.message_raw = {"datetime": "2026-08-18T00:01:00+00:00"}
         self.contract.finalize_payout(self.campaign_id)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
         self.assertEqual(len(self.gl.transfers), 1)
         self.assertEqual(self.gl.transfers[0]["to"], self.creator_addr)
         self.assertEqual(self.gl.transfers[0]["value"], 1200)
 
-    def test_08_timestamp_failure_reverts_and_never_defaults_to_zero(self):
-        """Missing or corrupted timestamp context must revert and NEVER default to 0"""
+    def test_02b_timestamp_failure_reverts(self):
+        """REGRESSION: Timestamp parse failure must REVERT, never silently return 0.
+        A timestamp of 0 would allow all time-based guards to be bypassed."""
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
-        # Missing datetime in message_raw -> MUST REVERT
+        # Missing 'datetime' key -> must revert
         self.gl.message_raw = {}
-        self.gl.message.sender_address = self.brand_addr
-        with self.assertRaises(MockUserError):
+        with self.assertRaises(MockUserError, msg="Missing datetime must raise UserError, not default to 0"):
             self.contract.cancel_campaign(self.campaign_id)
 
-        # Corrupted datetime format -> MUST REVERT
-        self.gl.message_raw = {"datetime": "INVALID_TIMESTAMP_STRING"}
-        with self.assertRaises(MockUserError):
+        # Empty string datetime -> must revert
+        self.gl.message_raw = {"datetime": ""}
+        with self.assertRaises(MockUserError, msg="Empty datetime must raise UserError"):
             self.contract.cancel_campaign(self.campaign_id)
+
+        # Malformed datetime string -> must revert
+        self.gl.message_raw = {"datetime": "not-a-date"}
+        with self.assertRaises(MockUserError, msg="Malformed datetime must raise UserError"):
+            self.contract.cancel_campaign(self.campaign_id)
+
+        # Valid datetime -> proceeds normally
+        self.gl.message.sender_address = self.brand_addr
+        self.gl.message_raw = {"datetime": "2026-08-17T00:00:00+00:00"}
+        self.contract.cancel_campaign(self.campaign_id)  # Should NOT raise
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CANCEL_REQUESTED")
 
     def test_03_timestamp_manipulation_defense(self):
         """Force cancellation timing is securely enforced on-chain (7 days)"""
