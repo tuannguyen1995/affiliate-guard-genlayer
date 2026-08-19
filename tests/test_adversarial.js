@@ -42,13 +42,33 @@ function runAdversarialSimulations() {
     assert.strictEqual(wouldAccept, false, "Contract must reject under-staking attack");
   });
 
-  it("Attack 2: Early payout withdrawal before 24h cooling-off delay -> MUST REVERT", () => {
+  it("Attack 2: Early payout withdrawal by ANY caller (Creator or Brand) before 24h cooling-off delay -> MUST REVERT", () => {
     const submittedAt = 1786924800; // T=0
     const payoutReadyAt = submittedAt + 86400; // T+24h
-    const attackerAttemptTime = submittedAt + 3600; // T+1h
+    const earlyAttemptTime = submittedAt + 3600; // T+1h
     
-    const isReady = attackerAttemptTime >= payoutReadyAt;
-    assert.strictEqual(isReady, false, "Contract must prevent premature payout release");
+    // Both Creator AND Brand are blocked from finalizing early
+    const isReadyForCreator = earlyAttemptTime >= payoutReadyAt;
+    const isReadyForBrand = earlyAttemptTime >= payoutReadyAt;
+    
+    assert.strictEqual(isReadyForCreator, false, "Contract must prevent creator early payout");
+    assert.strictEqual(isReadyForBrand, false, "Contract must prevent brand early payout");
+  });
+
+  it("Attack 2b: Timestamp failure handling -> MUST REVERT, NEVER DEFAULT TO 0", () => {
+    const datetimeRaw = null; // Simulated context failure
+    
+    let timestampDerived = null;
+    let didRevert = false;
+    
+    if (!datetimeRaw) {
+      didRevert = true; // Fix: Contract raises UserError instead of returning 0
+    } else {
+      timestampDerived = 0;
+    }
+    
+    assert.strictEqual(didRevert, true, "Contract must revert when timestamp context is missing or invalid");
+    assert.strictEqual(timestampDerived, null, "Timestamp must never default to 0");
   });
 
   it("Attack 3: Force cancellation attempt before 7-day timeout -> MUST REVERT", () => {

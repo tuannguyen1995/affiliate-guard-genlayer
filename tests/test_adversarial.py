@@ -178,13 +178,36 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         with self.assertRaises(MockUserError):
             self.contract.finalize_payout(self.campaign_id)
 
+        # Brand calls early (+6 hrs) -> MUST ALSO REVERT! (Fixed Steward Finding)
+        self.gl.message.sender_address = self.brand_addr
+        with self.assertRaises(MockUserError):
+            self.contract.finalize_payout(self.campaign_id)
+
         # Legitimate payout after 24h -> Succeeds
         self.gl.message_raw = {"datetime": "2026-08-18T00:01:00+00:00"}
+        self.gl.message.sender_address = self.creator_addr
         self.contract.finalize_payout(self.campaign_id)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
         self.assertEqual(len(self.gl.transfers), 1)
         self.assertEqual(self.gl.transfers[0]["to"], self.creator_addr)
         self.assertEqual(self.gl.transfers[0]["value"], 1200)
+
+    def test_08_timestamp_failure_reverts_and_never_defaults_to_zero(self):
+        """Missing or corrupted timestamp context must revert and NEVER default to 0"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        # Missing datetime in message_raw -> MUST REVERT
+        self.gl.message_raw = {}
+        self.gl.message.sender_address = self.brand_addr
+        with self.assertRaises(MockUserError):
+            self.contract.cancel_campaign(self.campaign_id)
+
+        # Corrupted datetime format -> MUST REVERT
+        self.gl.message_raw = {"datetime": "INVALID_TIMESTAMP_STRING"}
+        with self.assertRaises(MockUserError):
+            self.contract.cancel_campaign(self.campaign_id)
 
     def test_03_timestamp_manipulation_defense(self):
         """Force cancellation timing is securely enforced on-chain (7 days)"""
