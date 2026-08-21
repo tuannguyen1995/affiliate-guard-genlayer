@@ -3,8 +3,8 @@
 AffiliateGuard is a decentralized affiliate marketing escrow platform that uses GenLayer's Intelligent Contracts to automatically verify content requirements and process payouts via AI consensus.
 
 ## Deployed Contract
-- **Contract Address:** `0xfb07EA145187d51B1AC8a7D97F21d9a3069B40d0`
-- **GenLayer Explorer:** [https://genlayer-explorer.vercel.app/address/0xfb07EA145187d51B1AC8a7D97F21d9a3069B40d0](https://genlayer-explorer.vercel.app/address/0xfb07EA145187d51B1AC8a7D97F21d9a3069B40d0)
+- **Contract Address:** `0xdA32797FEaed009f6528366006697b6158D0e762`
+- **GenLayer Explorer:** [https://genlayer-explorer.vercel.app/address/0xdA32797FEaed009f6528366006697b6158D0e762](https://genlayer-explorer.vercel.app/address/0xdA32797FEaed009f6528366006697b6158D0e762)
 
 ## Live App
 - **Production URL:** [https://affiliateguard-one.vercel.app](https://affiliateguard-one.vercel.app)
