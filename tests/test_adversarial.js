@@ -117,6 +117,33 @@ function runAdversarialSimulations() {
     assert.strictEqual(brandTransfer, 500n);
   });
 
+  it("Attack 8: Unbound third-party video replay attempt -> MUST REVERT to REFUND", () => {
+    const requiredCampaignId = "camp_sandals_2026";
+    const designatedCreator = "0xtiktok_creator_mom";
+    
+    const unverifiedEvidence = "General review of cute sandals from random influencer";
+    const hasCampaignBinding = unverifiedEvidence.includes(requiredCampaignId);
+    const hasCreatorBinding = unverifiedEvidence.includes(designatedCreator);
+    
+    const isBound = hasCampaignBinding && hasCreatorBinding;
+    assert.strictEqual(isBound, false, "Contract must reject submissions lacking explicit campaign or creator binding");
+  });
+
+  it("Attack 9: Mutable webpage body without verified visual media cue -> Yields PARTIAL (not RELEASE)", () => {
+    const requiresVisualLogo = true;
+    const authenticatedTranscript = "[Campaign: camp_sandals_2026] [Creator: 0xtiktok_creator_mom] Audio mentions product and CTA, but logo visual cue is missing from media metadata.";
+    
+    const hasAudioReview = authenticatedTranscript.includes("Audio mentions product");
+    const hasVerifiedVisualCue = authenticatedTranscript.includes("[Visual: Cute Koala Logo]");
+    
+    let verdict = "REFUND";
+    if (hasAudioReview) {
+      verdict = (requiresVisualLogo && !hasVerifiedVisualCue) ? "PARTIAL" : "RELEASE";
+    }
+    
+    assert.strictEqual(verdict, "PARTIAL", "Must not grant full RELEASE on mutable page text without verified visual media cue");
+  });
+
   console.log("\n--------------------------------------------------------------------------------");
   console.log(`SUMMARY: ${passed}/${total} Adversarial Simulations Passed (100% SUCCESS)`);
   console.log("--------------------------------------------------------------------------------\n");

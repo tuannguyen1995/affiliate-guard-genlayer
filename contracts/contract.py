@@ -217,6 +217,8 @@ class Contract(gl.Contract):
         
         # Capture variables into scope for closure
         target_url = str(video_url)
+        camp_id = str(campaign_id)
+        creator_addr = str(campaign.creator)
         blacklist = str(campaign.blacklist_keywords)
         p_name = str(campaign.product_name)
         c_cta = str(campaign.required_cta)
@@ -234,28 +236,36 @@ class Contract(gl.Contract):
                 return {"verdict": "ESCALATE", "confidence": 100, "reason": f"Network error or 404: {str(e)}"}
                 
             prompt = f"""
-            You are an advanced AI consensus judge for an affiliate marketing campaign.
-            The required product to review is: {p_name}.
-            Required brand logo visual descriptor: {b_logo}.
-            Reference logo image URL (if provided): {l_url}.
-            Review the following video content meticulously.
+            You are an advanced Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
+            Review the authenticated transcript, video description, and media metadata meticulously.
 
-            Check strictly if:
-            1. The required product ({p_name}) is mentioned clearly.
-            2. There is a clear Call-To-Action (CTA) matching this requirement: {c_cta}.
-            3. There are localized subtitles or speech in these required languages: {r_lang}.
-            4. The creator strictly AVOIDED these blacklist keywords: {blacklist}.
-            5. If a brand logo is required (descriptor: "{b_logo}" is not "None"), verify if the brand logo/identity/watermark is visually mentioned, displayed, overlayed, or captioned in the video content.
+            MANDATORY VERIFICATION RULES:
+            1. EVIDENCE BINDING (Anti-Replay & Proof of Ownership):
+               - The submission MUST be bound to Campaign ID: "{camp_id}".
+               - The creator identity in metadata/description/transcript MUST bind to designated Creator: "{creator_addr}".
+               - If the submission lacks explicit binding to this campaign ID or creator (e.g. third-party video replay), return REFUND with reason "Failed evidence binding: Missing campaign ID or creator proof".
 
-            Return ONLY a JSON with this format:
-            {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "str"}}
+            2. AUTHENTICATED TRANSCRIPT & AUDIO COMPLIANCE:
+               - Product mention: The required product "{p_name}" must be reviewed clearly.
+               - Call-To-Action (CTA): Must include the required CTA: "{c_cta}".
+               - Language & Subtitles: Must feature spoken dialogue or subtitles in: "{r_lang}".
+               - Blacklist avoidance: Must strictly AVOID blacklist keywords: "{blacklist}". If used -> REFUND.
 
-            - RELEASE: All criteria met, no blacklist words used.
-            - PARTIAL: Good video but missing localized subtitles/languages, or missing required logo visual check.
-            - REFUND: Missing product mention, missing CTA, or used blacklist words.
-            - ESCALATE: Cannot determine the video content.
+            3. VISUAL & MEDIA COMPLIANCE (Not treating mutable page text as proof):
+               - Brand logo requirement: "{b_logo}" (Reference logo URL: "{l_url}").
+               - If brand logo is required (descriptor is not "None"), verify if authenticated media cues, timestamped visual markers, or verified caption tags (e.g., [Visual: {b_logo}]) confirm visual presence.
+               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified media/transcript cues.
+               - If speech/transcript is compliant but required visual logo proof is absent, return PARTIAL.
 
-            Video Content:
+            Return ONLY a valid JSON object:
+            {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
+
+            - RELEASE: All requirements met (Valid campaign & creator binding, product reviewed, CTA verified, zero blacklist keywords, visual logo confirmed if required).
+            - PARTIAL: Bound campaign with valid product review and CTA, but missing localized subtitles or missing visual logo proof.
+            - REFUND: Missing campaign/creator binding, missing product review, missing CTA, or used blacklist words.
+            - ESCALATE: Unreachable media URL, network error, or indecipherable transcript.
+
+            Authenticated Evidence Content:
             {content[:3000]}
             """
             try:
@@ -318,6 +328,8 @@ class Contract(gl.Contract):
             raise UserError("Campaign must be in ESCALATED state to appeal")
 
         target_url = str(campaign.video_url)
+        camp_id = str(campaign_id)
+        creator_addr = str(campaign.creator)
         blacklist = str(campaign.blacklist_keywords)
         p_name = str(campaign.product_name)
         c_cta = str(campaign.required_cta)
@@ -334,22 +346,29 @@ class Contract(gl.Contract):
                 content = f"Error fetching: {str(e)}"
                 
             prompt = f"""
-            You are the final appellate judge for a disputed affiliate campaign.
-            The required product was: {p_name}
-            Required CTA: {c_cta}
-            Required Subtitles / Languages: {r_lang}
-            Required Brand Logo Descriptor: {b_logo}
-            Reference Logo Image URL: {l_url}
-            Blacklist to avoid: {blacklist}
+            You are the final appellate judge for a disputed affiliate campaign on GenLayer.
+            Review the authenticated transcript, creator explanation, and campaign binding.
+
+            Required Campaign ID: "{camp_id}"
+            Required Creator: "{creator_addr}"
+            Required product: "{p_name}"
+            Required CTA: "{c_cta}"
+            Required Subtitles / Languages: "{r_lang}"
+            Required Brand Logo Descriptor: "{b_logo}" (Logo URL: "{l_url}")
+            Blacklist to avoid: "{blacklist}"
             
-            The creator's video was previously flagged. They have submitted an explanation:
+            Creator Appeal Explanation:
             {appeal_text}
             
-            Video Content to review:
+            Authenticated Media Content & Transcript:
             {content[:3000]}
             
-            Based on their explanation and the video content, decide the final outcome.
-            Return ONLY a JSON: {{"verdict": "RELEASE|PARTIAL|REFUND", "confidence": 100, "reason": "str"}}
+            MANDATORY RULES:
+            1. Verify Campaign ID "{camp_id}" and Creator "{creator_addr}" binding in evidence.
+            2. Verify authenticated transcript covers product "{p_name}" and CTA "{c_cta}" with zero blacklist words.
+            3. For visual logo compliance, verify authenticated media cues/visual caption markers.
+            
+            Return ONLY a JSON: {{"verdict": "RELEASE|PARTIAL|REFUND", "confidence": 100, "reason": "concise explanation"}}
             """
             try:
                 llm_res = gl.nondet.exec_prompt(prompt, response_format="json")

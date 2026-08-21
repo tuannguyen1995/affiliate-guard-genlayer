@@ -902,9 +902,21 @@ function App() {
                             <span>The AI rejected your video (Reason: {campaignData.reason}). You have 1 chance left to fix the video and resubmit!</span>
                           </div>
                         )}
+                        <div className="alert" style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', marginBottom: '1.25rem' }}>
+                          <strong style={{ fontSize: '0.9rem', color: '#60a5fa', display: 'block', marginBottom: '0.35rem' }}>
+                            🛡️ Evidence & Ownership Binding Requirement:
+                          </strong>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5', display: 'block' }}>
+                            Your video description or closed captions MUST include the verification tags below to bind the submission to your campaign and prevent replay attacks:
+                          </span>
+                          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '4px', marginTop: '0.5rem', fontFamily: 'monospace', fontSize: '0.8rem', color: '#93c5fd' }}>
+                            [Campaign: {campaignId}] [Creator: {account ? account.slice(0, 10) + '...' : 'YourWallet'}]
+                          </div>
+                        </div>
+
                         <form onSubmit={submitVideoUrl}>
                           <div className="form-group">
-                            <label>Video URL (TikTok/Reels/Shorts)</label>
+                            <label>Video / Authenticated Media URL (TikTok/Reels/Shorts)</label>
                             <input 
                               type="url" 
                               placeholder="https://..." 

@@ -343,6 +343,34 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.assertEqual(self.gl.transfers[1]["to"], self.brand_addr)
         self.assertEqual(self.gl.transfers[1]["value"], 500) # 500 escrow
 
+    def test_08_unbound_submission_replay_attack_rejected(self):
+        """Attacker submits a viral third-party video without campaign ID / creator binding -> Rejected"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        # Content is a general sandals review from an unverified channel lacking campaign ID and creator binding
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="General review of cute sandals from random influencer channel")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 99, "reason": "Failed evidence binding: Missing campaign ID or creator proof"}')
+
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@other_person/viral_sandals")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "REFUND")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "NEEDS_REVISION")
+
+    def test_09_mutable_page_text_without_visual_cue_cannot_claim_full_release(self):
+        """Authenticated transcript with valid speech but lacking verified media visual cue returns PARTIAL, not full RELEASE"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        # Authenticated transcript bound to campaign and creator, with product review & CTA, but NO verified visual logo cue
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content=f"[Campaign: {self.campaign_id}] [Creator: {self.creator_addr}] Spoken review of children summer sandals, click yellow shopping bag! Missing logo visual cue.")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "PARTIAL", "confidence": 95, "reason": "Audio review and campaign binding passed, but missing verified visual brand logo cue"}')
+
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_partial")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "PARTIAL")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "AWAITING_PAYOUT")
+
 
 if __name__ == "__main__":
     print("=" * 80)
