@@ -139,6 +139,11 @@ class TestEvidenceBindingAndVisualCompliance(unittest.TestCase):
         self.assertEqual(self.contract.campaigns[self.cid].status, "AWAITING_PAYOUT")
         self.assertEqual(self.contract.campaigns[self.cid].verdict, "RELEASE")
 
+    def test_04_unauthenticated_pastebin_domain_rejected(self):
+        """Creator attempting to submit a raw pastebin / unauthenticated blog is rejected by platform check"""
+        with self.assertRaises(contract_module.UserError, msg="Unauthenticated pastebin must be rejected"):
+            self.contract.submit_video(self.cid, "https://pastebin.com/raw/malicious_fake_proof.txt")
+
 if __name__ == "__main__":
     print("=" * 80)
     print("RUNNING EVIDENCE BINDING TEST SUITE (tests/test_evidence_binding.py)")

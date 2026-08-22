@@ -294,25 +294,27 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.assertEqual(self.gl.transfers[0]["to"], self.creator_addr)
         self.assertEqual(self.gl.transfers[0]["value"], 1200)
 
-    def test_06_slashing_on_repeated_failures(self):
-        """Creator fails twice (e.g. used toxic material blacklist keyword) -> Slashed"""
+    def test_06_safe_stake_protection_on_repeated_failure(self):
+        """Creator fails verification twice -> Escrow is refunded to Brand, and Creator's stake is safely returned (no blind slashing on mutable scrapes)"""
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
-        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Cheap plastic and toxic material")
-        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Blacklist keyword used"}')
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Review missing required product")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Missing product mention"}')
 
         # 1st fail -> Revision
         self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/fail1")
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "NEEDS_REVISION")
 
-        # 2nd fail -> Slashed to brand
+        # 2nd fail -> Brand gets escrow (1000), Creator gets stake returned (200)
         self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/fail2")
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
-        self.assertEqual(len(self.gl.transfers), 1)
+        self.assertEqual(len(self.gl.transfers), 2)
         self.assertEqual(self.gl.transfers[0]["to"], self.brand_addr)
-        self.assertEqual(self.gl.transfers[0]["value"], 1200) # 1000 escrow + 200 creator stake slashed
+        self.assertEqual(self.gl.transfers[0]["value"], 1000) # Brand escrow refund
+        self.assertEqual(self.gl.transfers[1]["to"], self.creator_addr)
+        self.assertEqual(self.gl.transfers[1]["value"], 200)  # Creator stake returned safely
 
     def test_07_stale_dispute_recovery_after_30_days(self):
         """Unresolved disputes can be recovered after 30 days (50/50 split + stake refund)"""
@@ -370,6 +372,41 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_partial")
         self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "PARTIAL")
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "AWAITING_PAYOUT")
+
+    def test_10_unauthenticated_raw_web_domain_rejected(self):
+        """Submitting a raw pastebin or arbitrary unauthenticated creator-controlled URL -> Reverts"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        with self.assertRaises(MockUserError, msg="Unauthenticated domain must be rejected"):
+            self.contract.submit_video(self.campaign_id, "https://my-scam-pastebin.com/fake_video.html")
+
+    def test_11_arbitrator_authorized_stake_slashing_on_confirmed_fraud(self):
+        """Stake slashing is exclusively authorized via owner/arbitrator dispute resolution on verified fraud"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 95, "reason": "Passed"}')
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals")
+
+        # Brand opens dispute alleging fraud
+        self.gl.message.sender_address = self.brand_addr
+        self.contract.dispute_verdict(self.campaign_id)
+
+        # Brand cannot unilaterally slash -> Reverts
+        with self.assertRaises(MockUserError):
+            self.contract.resolve_dispute(self.campaign_id, "SLASH")
+
+        # Arbitrator (contract owner) executes SLASH on confirmed malicious breach -> Brand receives escrow + stake
+        self.gl.message.sender_address = self.deployer_addr
+        self.contract.resolve_dispute(self.campaign_id, "SLASH")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
+        self.assertEqual(len(self.gl.transfers), 1)
+        self.assertEqual(self.gl.transfers[0]["to"], self.brand_addr)
+        self.assertEqual(self.gl.transfers[0]["value"], 1200) # 1000 escrow + 200 stake
 
 
 if __name__ == "__main__":

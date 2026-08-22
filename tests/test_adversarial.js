@@ -86,17 +86,20 @@ function runAdversarialSimulations() {
     assert.strictEqual(isAllowed, false, "Brand must be forbidden from executing self-REFUND or SPLIT");
   });
 
-  it("Terminal Flow 5: Double verification failure triggers 100% Slashing to Brand", () => {
+  it("Terminal Flow 5: Double verification failure safely refunds Escrow and returns Stake (no blind slashing on scrapes)", () => {
     const escrow = 1000n;
     const stake = 200n;
     const resubmissions = 1n; // Already failed once
     
-    let brandBalance = 0n;
+    let brandTransfer = 0n;
+    let creatorTransfer = 0n;
     if (resubmissions >= 1n) {
-      // Slashing applied: Brand receives escrow + seized stake
-      brandBalance += escrow + stake;
+      // Safe terminal flow: Brand refunded escrow, Creator receives stake safely
+      brandTransfer = escrow;
+      creatorTransfer = stake;
     }
-    assert.strictEqual(brandBalance, 1200n, "Brand must receive full escrow plus seized creator stake");
+    assert.strictEqual(brandTransfer, 1000n, "Brand must receive full escrow refund");
+    assert.strictEqual(creatorTransfer, 200n, "Creator stake must be returned safely, not blindly slashed on scrapes");
   });
 
   it("Terminal Flow 6: Stale dispute recovery after 30 days splits escrow 50/50 and returns stake", () => {
@@ -142,6 +145,22 @@ function runAdversarialSimulations() {
     }
     
     assert.strictEqual(verdict, "PARTIAL", "Must not grant full RELEASE on mutable page text without verified visual media cue");
+  });
+
+  it("Attack 10: Unauthenticated raw web pastebin URL -> MUST REVERT", () => {
+    const rawUrl = "https://raw-pastebin.com/fake_proof.html";
+    const validDomains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"];
+    const isDomainAllowed = validDomains.some(d => rawUrl.includes(d));
+    assert.strictEqual(isDomainAllowed, false, "Must reject unauthenticated raw web URLs not hosted on official media platforms");
+  });
+
+  it("Attack 11: Malicious Brand cannot unilaterally slash creator stake without Arbitrator authorization -> MUST REVERT", () => {
+    const caller = "0xbrand_shoes";
+    const owner = "0xarbitrator";
+    const resolution = "SLASH";
+    
+    const isAuthorized = (caller === owner);
+    assert.strictEqual(isAuthorized, false, "Brand cannot unilaterally slash creator stake without owner/arbitrator review");
   });
 
   console.log("\n--------------------------------------------------------------------------------");

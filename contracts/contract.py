@@ -211,6 +211,12 @@ class Contract(gl.Contract):
         if campaign.status not in ["OPEN", "CANCEL_REQUESTED", "NEEDS_REVISION"]:
             raise UserError("Campaign is not OPEN, pending cancellation, or needing revision")
         
+        # Enforce authentic media platform domain (reject unauthenticated creator-controlled raw web text / pastebins)
+        target_url_lower = str(video_url).lower().strip()
+        valid_domains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"]
+        if not any(d in target_url_lower for d in valid_domains):
+            raise UserError("Invalid evidence source: Submission must be hosted on an authentic media platform (YouTube, TikTok, Instagram, X)")
+
         campaign.video_url = video_url
         campaign.status = "IN_PROGRESS"
         self.campaigns[campaign_id] = campaign
@@ -237,30 +243,30 @@ class Contract(gl.Contract):
                 
             prompt = f"""
             You are an advanced Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
-            Review the authenticated transcript, video description, and media metadata meticulously.
+            Review the authentic platform transcript, video description, and media metadata meticulously.
 
             MANDATORY VERIFICATION RULES:
-            1. EVIDENCE BINDING (Anti-Replay & Proof of Ownership):
-               - The submission MUST be bound to Campaign ID: "{camp_id}".
-               - The creator identity in metadata/description/transcript MUST bind to designated Creator: "{creator_addr}".
-               - If the submission lacks explicit binding to this campaign ID or creator (e.g. third-party video replay), return REFUND with reason "Failed evidence binding: Missing campaign ID or creator proof".
+            1. AUTHENTIC ACCOUNT & CAMPAIGN BINDING:
+               - Verify that the video/post belongs to the authentic creator channel associated with: "{creator_addr}".
+               - Verify that the content is explicitly created for Campaign ID: "{camp_id}".
+               - If the submission lacks explicit binding to this campaign or creator account, return REFUND with reason "Unauthenticated account or missing campaign binding".
 
             2. AUTHENTICATED TRANSCRIPT & AUDIO COMPLIANCE:
-               - Product mention: The required product "{p_name}" must be reviewed clearly.
+               - Product review: The required product "{p_name}" must be clearly featured.
                - Call-To-Action (CTA): Must include the required CTA: "{c_cta}".
-               - Language & Subtitles: Must feature spoken dialogue or subtitles in: "{r_lang}".
+               - Language & Subtitles: Must feature dialogue or subtitles in: "{r_lang}".
                - Blacklist avoidance: Must strictly AVOID blacklist keywords: "{blacklist}". If used -> REFUND.
 
-            3. VISUAL & MEDIA COMPLIANCE (Not treating mutable page text as proof):
+            3. VISUAL COMPLIANCE (Not treating mutable page text as proof):
                - Brand logo requirement: "{b_logo}" (Reference logo URL: "{l_url}").
-               - If brand logo is required (descriptor is not "None"), verify if authenticated media cues, timestamped visual markers, or verified caption tags (e.g., [Visual: {b_logo}]) confirm visual presence.
-               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified media/transcript cues.
-               - If speech/transcript is compliant but required visual logo proof is absent, return PARTIAL.
+               - If brand logo is required (descriptor is not "None"), verify if authentic media cues, timestamped visual markers, or verified caption tags (e.g., [Visual: {b_logo}]) confirm visual presence.
+               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified media cues.
+               - If speech/transcript is compliant but visual logo proof cannot be certified from text alone, return PARTIAL so brand can inspect during the cooling-off window.
 
             Return ONLY a valid JSON object:
             {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
 
-            - RELEASE: All requirements met (Valid campaign & creator binding, product reviewed, CTA verified, zero blacklist keywords, visual logo confirmed if required).
+            - RELEASE: All requirements met (Authentic account & campaign bound, product reviewed, CTA verified, zero blacklist keywords, visual logo confirmed if required).
             - PARTIAL: Bound campaign with valid product review and CTA, but missing localized subtitles or missing visual logo proof.
             - REFUND: Missing campaign/creator binding, missing product review, missing CTA, or used blacklist words.
             - ESCALATE: Unreachable media URL, network error, or indecipherable transcript.
@@ -347,7 +353,7 @@ class Contract(gl.Contract):
                 
             prompt = f"""
             You are the final appellate judge for a disputed affiliate campaign on GenLayer.
-            Review the authenticated transcript, creator explanation, and campaign binding.
+            Review the authentic transcript, creator explanation, and campaign binding.
 
             Required Campaign ID: "{camp_id}"
             Required Creator: "{creator_addr}"
@@ -365,8 +371,8 @@ class Contract(gl.Contract):
             
             MANDATORY RULES:
             1. Verify Campaign ID "{camp_id}" and Creator "{creator_addr}" binding in evidence.
-            2. Verify authenticated transcript covers product "{p_name}" and CTA "{c_cta}" with zero blacklist words.
-            3. For visual logo compliance, verify authenticated media cues/visual caption markers.
+            2. Verify authentic transcript covers product "{p_name}" and CTA "{c_cta}" with zero blacklist words.
+            3. For visual logo compliance, verify authentic media cues/visual caption markers.
             
             Return ONLY a JSON: {{"verdict": "RELEASE|PARTIAL|REFUND", "confidence": 100, "reason": "concise explanation"}}
             """
@@ -402,7 +408,13 @@ class Contract(gl.Contract):
         self._process_payout(campaign_id, verdict)
 
     def _process_payout(self, campaign_id: str, verdict: str) -> None:
-        """Utility function to handle payout logic with Slashing/Staking and Payout Delay"""
+        """
+        Utility function to handle payout logic.
+        SECURITY: Automatic stake slashing is decoupled from heuristic/mutable web text scrapes.
+        - On verified compliance (RELEASE/PARTIAL): Enters 24h cooling-off for Brand verification.
+        - On failure (REFUND): Brand receives 100% escrow refund; Creator's stake is safely returned (no blind slashing on mutable text).
+        - Malicious stake slashing is strictly reserved for authorized arbitration (resolve_dispute) on verified fraud.
+        """
         campaign = self.campaigns[campaign_id]
         
         if verdict in ["RELEASE", "PARTIAL"]:
@@ -415,9 +427,10 @@ class Contract(gl.Contract):
                 campaign.resubmissions += bigint(1)
             else:
                 campaign.status = "CLOSED"
-                # SLASHING APPLIED: Creator failed twice. Brand receives the escrow AND seizes the Creator's stake.
-                total_refund = campaign.escrow_amount + campaign.creator_stake
-                gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(total_refund))
+                # Safe terminal fund flow: Brand receives escrow refund, Creator stake is safely returned (no blind slashing on web scrapes)
+                gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(campaign.escrow_amount))
+                if campaign.creator_stake > bigint(0):
+                    gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(campaign.creator_stake))
         else: # ESCALATE state (from initial check)
             campaign.status = "ESCALATED"
             
@@ -480,7 +493,7 @@ class Contract(gl.Contract):
         """
         Authorized resolution path for disputed escrow.
         SECURITY: 
-        - Owner/Arbitrator can decide RELEASE, REFUND, or SPLIT.
+        - Owner/Arbitrator can decide RELEASE, REFUND, SPLIT, or SLASH.
         - Brand can ONLY voluntarily RELEASE funds (concession). Brand cannot self-refund or seize creator stake!
         """
         if campaign_id not in self.campaigns:
@@ -497,7 +510,7 @@ class Contract(gl.Contract):
         
         # Anti-exploit check: Brand can only voluntarily release funds to creator
         if caller == campaign.brand.lower() and caller != self.owner and resolution_upper != "RELEASE":
-            raise UserError("Brand can only voluntarily RELEASE funds to creator. Only owner/arbitrator can enforce REFUND or SPLIT.")
+            raise UserError("Brand can only voluntarily RELEASE funds to creator. Only owner/arbitrator can enforce REFUND, SPLIT, or SLASH.")
 
         amount = campaign.escrow_amount
         stake = campaign.creator_stake
@@ -507,7 +520,14 @@ class Contract(gl.Contract):
             # Award full payment + stake to creator
             gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(amount + stake))
         elif resolution_upper == "REFUND":
-            # Refund escrow + slashed stake to brand (only owner/arbitrator can trigger this)
+            # Refund escrow to brand, return stake to creator
+            gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(amount))
+            if stake > bigint(0):
+                gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(stake))
+        elif resolution_upper == "SLASH":
+            # Slashing applied on confirmed malicious fraud: Brand receives escrow + slashed creator stake (Owner/Arbitrator only)
+            if caller != self.owner:
+                raise UserError("Only owner/arbitrator can authorize stake slashing")
             gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(amount + stake))
         elif resolution_upper == "SPLIT":
             # Split escrow 50/50 and return stake to creator
@@ -516,7 +536,7 @@ class Contract(gl.Contract):
             gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(half + stake))
             gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(rem))
         else:
-            raise UserError("Invalid resolution: Must be RELEASE, REFUND, or SPLIT")
+            raise UserError("Invalid resolution: Must be RELEASE, REFUND, SPLIT, or SLASH")
             
         self.campaigns[campaign_id] = campaign
 
