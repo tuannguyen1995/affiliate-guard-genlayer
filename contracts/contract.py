@@ -41,10 +41,10 @@ class Contract(gl.Contract):
         """Derive trusted timestamp from GenLayer transaction execution context (gl.message_raw).
         SECURITY: Raises UserError if trusted datetime is missing or malformed — never defaults to 0,
         as that would allow an attacker to bypass all time-based guards."""
-        dt_str = str(gl.message_raw.get("datetime", ""))
-        if not dt_str:
-            raise UserError("Trusted timestamp unavailable: gl.message_raw missing 'datetime' field")
         try:
+            dt_str = str(gl.message_raw.get("datetime", ""))
+            if not dt_str:
+                raise UserError("Trusted timestamp unavailable: gl.message_raw missing 'datetime' field")
             from datetime import datetime
             dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
             ts = bigint(int(dt.timestamp()))
@@ -188,7 +188,13 @@ class Contract(gl.Contract):
         if campaign.status != "CANCEL_REQUESTED":
             raise UserError("Campaign is not pending cancellation")
             
+        if campaign.cancel_requested_at <= bigint(0):
+            raise UserError("Cancel request timestamp not initialized")
+            
         now = self._get_current_timestamp()
+        if now <= bigint(0):
+            raise UserError("Trusted timestamp resolved to zero — refusing to proceed")
+            
         # 7 days = 604800 seconds
         if now < campaign.cancel_requested_at + bigint(604800):
             raise UserError("7 days have not passed since the cancel request")
@@ -467,7 +473,11 @@ class Contract(gl.Contract):
         # Enforce cooling-off delay for ALL callers — brand cannot bypass the 24h window.
         # The delay exists so both parties respect the dispute window before funds move.
         # SECURITY: Neither brand nor creator may skip the delay.
+        if campaign.payout_ready_at <= bigint(0):
+            raise UserError("Payout cooling-off delay has not been properly initialized")
         now = self._get_current_timestamp()
+        if now <= bigint(0):
+            raise UserError("Trusted timestamp resolved to zero — refusing to proceed")
         if now < campaign.payout_ready_at:
             raise UserError("Payout cooling-off delay (24 hours) has not elapsed yet. Neither brand nor creator may finalize early.")
             
@@ -553,7 +563,13 @@ class Contract(gl.Contract):
         if caller != campaign.brand.lower() and caller != campaign.creator.lower() and caller != self.owner:
             raise UserError("Unauthorized: Only participants or owner can recover stale dispute")
             
+        if campaign.disputed_at <= bigint(0):
+            raise UserError("Dispute timestamp not initialized")
+            
         now = self._get_current_timestamp()
+        if now <= bigint(0):
+            raise UserError("Trusted timestamp resolved to zero — refusing to proceed")
+            
         # 30 days = 2592000 seconds
         if now < campaign.disputed_at + bigint(2592000):
             raise UserError("Dispute recovery period (30 days) has not elapsed yet")

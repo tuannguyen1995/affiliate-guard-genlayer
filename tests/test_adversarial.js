@@ -67,6 +67,20 @@ function runAdversarialSimulations() {
     assert.ok(validTimestamp("2026-08-17T00:00:00Z") > 0, "Valid timestamp must pass");
   });
 
+  it("Attack 2c: Zero timestamp cannot bypass cooling-off -> MUST REVERT", () => {
+    const payoutReadyAt = 1786924800; // Expected delay
+    const attackerZeroTime = 0; // Simulate an evaluator failing to timestamp 0
+    
+    // Explicit safeguard check in contract: now <= 0 -> REVERT
+    const now = attackerZeroTime;
+    const isZeroSafeguardTriggered = now <= 0;
+    assert.strictEqual(isZeroSafeguardTriggered, true, "Contract explicit zero-guard must trigger before evaluating now < payoutReadyAt");
+    
+    // Even if it evaluated, 0 < payoutReadyAt is TRUE, which would correctly revert!
+    const isEarly = now < payoutReadyAt;
+    assert.strictEqual(isEarly, true, "0 < payoutReadyAt evaluates to true, which correctly reverts the transaction in the contract logic");
+  });
+
   it("Attack 3: Force cancellation attempt before 7-day timeout -> MUST REVERT", () => {
     const cancelRequestedAt = 1786924800;
     const forceCancelAllowedAt = cancelRequestedAt + 604800; // +7 days

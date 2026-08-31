@@ -222,6 +222,23 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.contract.cancel_campaign(self.campaign_id)  # Should NOT raise
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CANCEL_REQUESTED")
 
+    def test_02c_zero_timestamp_cannot_bypass_cooling_off(self):
+        """REGRESSION: If the timestamp is somehow 0, it must NOT bypass the cooling off period."""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Legit review of children summer sandals, click the yellow shopping bag!")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 98, "reason": "Passed"}')
+
+        self.gl.message_raw = {"datetime": "2026-08-17T00:00:00+00:00"}
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals")
+        
+        # Now try to finalize with a 0 timestamp (Unix epoch start)
+        self.gl.message_raw = {"datetime": "1970-01-01T00:00:00+00:00"}
+        with self.assertRaises(MockUserError, msg="Timestamp of 0 must revert and not bypass the cooling off period"):
+            self.contract.finalize_payout(self.campaign_id)
+
     def test_03_timestamp_manipulation_defense(self):
         """Force cancellation timing is securely enforced on-chain (7 days)"""
         self.gl.message.sender_address = self.creator_addr
