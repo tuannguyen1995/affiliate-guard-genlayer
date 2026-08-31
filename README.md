@@ -7,7 +7,7 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform that uses 
 - **GenLayer Explorer:** [https://genlayer-explorer.vercel.app/address/0x8A319a554212c9AF4343EB30Aa904a480a9F0136](https://genlayer-explorer.vercel.app/address/0x8A319a554212c9AF4343EB30Aa904a480a9F0136)
 
 ## Live App
-- **Production URL:** [https://affiliateguard-one.vercel.app](https://affiliateguard-one.vercel.app)
+- **Production URL:** [https://affiliateguard.vercel.app](https://affiliateguard.vercel.app)
 
 ## How it Works
 1. **Brand Escrow:** Brands create a campaign with a designated Creator, escrow amount, product requirements, CTA, and blacklist keywords.

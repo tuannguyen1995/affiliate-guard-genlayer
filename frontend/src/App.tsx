@@ -566,7 +566,7 @@ function App() {
     setRequiredLang('English, Japanese, Chinese');
     setCampaignDesc('Video review of children sandals, showcasing soft and comfortable design, with a shopping cart attached.');
     setBrandLogo("The word 'AffiliateGuard' next to a blue protective shield icon");
-    setLogoUrl("https://affiliate-guard-genlayer.vercel.app/shield-logo.png");
+    setLogoUrl("https://affiliateguard.vercel.app/shield-logo.png");
   };
 
   // ---------------- MOCK DATA ----------------
