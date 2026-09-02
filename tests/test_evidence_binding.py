@@ -103,6 +103,7 @@ class TestEvidenceBindingAndVisualCompliance(unittest.TestCase):
         self.contract.create_campaign(
             self.cid,
             self.creator,
+            "@creator",
             "scam, cheap plastic",
             "children summer sandals",
             "click yellow bag",

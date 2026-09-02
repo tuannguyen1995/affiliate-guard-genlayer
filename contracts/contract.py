@@ -9,6 +9,7 @@ import json
 class Campaign:
     brand: str
     creator: str
+    creator_handle: str
     escrow_amount: bigint
     creator_stake: bigint
     status: str
@@ -73,7 +74,7 @@ class Contract(gl.Contract):
             return {"verdict": "ESCALATE", "confidence": 0, "reason": "Failed to parse JSON: " + str(e)}
 
     @gl.public.write.payable
-    def create_campaign(self, campaign_id: str, creator_address: str, blacklist_keywords: str, product_name: str, required_cta: str, required_lang: str, campaign_desc: str, brand_logo: str, logo_url: str) -> None:
+    def create_campaign(self, campaign_id: str, creator_address: str, creator_handle: str, blacklist_keywords: str, product_name: str, required_cta: str, required_lang: str, campaign_desc: str, brand_logo: str, logo_url: str) -> None:
         amount = gl.message.value
         if amount <= bigint(0):
             raise UserError("Escrow amount must be greater than 0")
@@ -81,10 +82,15 @@ class Contract(gl.Contract):
         if campaign_id in self.campaigns:
             raise UserError("Campaign ID already exists")
             
+        handle_clean = str(creator_handle).strip() if creator_handle else "@creator"
+        if not handle_clean.startswith("@"):
+            handle_clean = "@" + handle_clean
+            
         self.campaign_ids.append(campaign_id)
         self.campaigns[campaign_id] = Campaign(
             brand=str(gl.message.sender_address).lower(),
             creator=creator_address.lower(),
+            creator_handle=handle_clean.lower(),
             escrow_amount=amount,
             creator_stake=bigint(0),
             status="PENDING_ACCEPTANCE",
@@ -231,6 +237,7 @@ class Contract(gl.Contract):
         target_url = str(video_url)
         camp_id = str(campaign_id)
         creator_addr = str(campaign.creator)
+        c_handle = str(campaign.creator_handle)
         blacklist = str(campaign.blacklist_keywords)
         p_name = str(campaign.product_name)
         c_cta = str(campaign.required_cta)
@@ -249,33 +256,34 @@ class Contract(gl.Contract):
                 
             prompt = f"""
             You are an advanced Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
-            Review the authentic platform transcript, video description, and media metadata meticulously.
+            Review the authentic platform transcript, video description, creator account metadata, and media provenance meticulously.
 
             MANDATORY VERIFICATION RULES:
-            1. AUTHENTIC ACCOUNT & CAMPAIGN BINDING:
-               - Verify that the video/post belongs to the authentic creator channel associated with: "{creator_addr}".
-               - Verify that the content is explicitly created for Campaign ID: "{camp_id}".
-               - If the submission lacks explicit binding to this campaign or creator account, return REFUND with reason "Unauthenticated account or missing campaign binding".
+            1. PLATFORM HOST & CREATOR ACCOUNT AUTHENTICATION:
+               - Platform Host Authenticity: Verify that evidence originates from an authentic platform host (YouTube, TikTok, Instagram, X/Twitter).
+               - Creator Account Authenticity: Verify that the content is posted by the authentic creator handle "{c_handle}" associated with creator wallet "{creator_addr}".
+               - Campaign Binding: Verify that the content explicitly references Campaign ID "{camp_id}".
+               - If the post lacks creator handle/wallet binding or originates from an unauthenticated spoofed host, return REFUND with reason "Unauthenticated creator account or platform host".
 
-            2. AUTHENTICATED TRANSCRIPT & AUDIO COMPLIANCE:
-               - Product review: The required product "{p_name}" must be clearly featured.
-               - Call-To-Action (CTA): Must include the required CTA: "{c_cta}".
-               - Language & Subtitles: Must feature dialogue or subtitles in: "{r_lang}".
-               - Blacklist avoidance: Must strictly AVOID blacklist keywords: "{blacklist}". If used -> REFUND.
+            2. TRANSCRIPT & AUDIO PROVENANCE COMPLIANCE:
+               - Product Review: Product "{p_name}" must be clearly featured.
+               - Call-To-Action (CTA): Must include CTA: "{c_cta}".
+               - Dialogue & Subtitles: Dialogue or subtitles must be in: "{r_lang}".
+               - Blacklist Avoidance: Must strictly AVOID keywords: "{blacklist}". If used -> REFUND.
 
-            3. VISUAL COMPLIANCE (Not treating mutable page text as proof):
-               - Brand logo requirement: "{b_logo}" (Reference logo URL: "{l_url}").
-               - If brand logo is required (descriptor is not "None"), verify if authentic media cues, timestamped visual markers, or verified caption tags (e.g., [Visual: {b_logo}]) confirm visual presence.
-               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified media cues.
-               - If speech/transcript is compliant but visual logo proof cannot be certified from text alone, return PARTIAL so brand can inspect during the cooling-off window.
+            3. FRAME & VISUAL PROVENANCE CERTIFICATION:
+               - Brand Logo Requirement: "{b_logo}" (Reference URL: "{l_url}").
+               - Verify timestamped visual frame cues, caption markers, or visual presence (e.g., [Visual Frame: {b_logo}]).
+               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified frame provenance.
+               - If transcript is compliant but visual frame provenance cannot be certified from text alone, return PARTIAL for brand inspection window.
 
             Return ONLY a valid JSON object:
             {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
 
-            - RELEASE: All requirements met (Authentic account & campaign bound, product reviewed, CTA verified, zero blacklist keywords, visual logo confirmed if required).
-            - PARTIAL: Bound campaign with valid product review and CTA, but missing localized subtitles or missing visual logo proof.
-            - REFUND: Missing campaign/creator binding, missing product review, missing CTA, or used blacklist words.
-            - ESCALATE: Unreachable media URL, network error, or indecipherable transcript.
+            - RELEASE: All criteria passed (Authentic platform host & creator account bound, product reviewed, CTA verified, zero blacklist words, frame provenance certified).
+            - PARTIAL: Bound campaign with valid transcript, but missing localized subtitles or missing visual frame provenance.
+            - REFUND: Missing creator account binding, missing product/CTA, or blacklisted words.
+            - ESCALATE: Unreachable URL, 404, or indecipherable media transcript.
 
             Authenticated Evidence Content:
             {content[:3000]}
@@ -443,23 +451,8 @@ class Contract(gl.Contract):
         self.campaigns[campaign_id] = campaign
 
     @gl.public.write
-    def dispute_verdict(self, campaign_id: str) -> None:
-        """Allows Brand to dispute AI verdict during cooling-off window"""
-        if campaign_id not in self.campaigns:
-            raise UserError("Campaign not found")
-        campaign = self.campaigns[campaign_id]
-        if str(gl.message.sender_address).lower() != campaign.brand.lower():
-            raise UserError("Only the Brand can dispute")
-        if campaign.status != "AWAITING_PAYOUT":
-            raise UserError("Can only dispute during AWAITING_PAYOUT phase")
-            
-        campaign.status = "DISPUTED"
-        campaign.disputed_at = self._get_current_timestamp()
-        self.campaigns[campaign_id] = campaign
-
-    @gl.public.write
     def finalize_payout(self, campaign_id: str) -> None:
-        """Finalizes payout after 24h cooling-off delay (or early with brand consent)"""
+        """Finalizes payout after 24h cooling-off delay if undisputed"""
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
@@ -470,9 +463,6 @@ class Contract(gl.Contract):
         if caller != campaign.brand.lower() and caller != campaign.creator.lower():
             raise UserError("Unauthorized: Only brand or creator can finalize payout")
 
-        # Enforce cooling-off delay for ALL callers — brand cannot bypass the 24h window.
-        # The delay exists so both parties respect the dispute window before funds move.
-        # SECURITY: Neither brand nor creator may skip the delay.
         if campaign.payout_ready_at <= bigint(0):
             raise UserError("Payout cooling-off delay has not been properly initialized")
         now = self._get_current_timestamp()
@@ -499,33 +489,132 @@ class Contract(gl.Contract):
         self.campaigns[campaign_id] = campaign
 
     @gl.public.write
-    def resolve_dispute(self, campaign_id: str, resolution: str) -> None:
+    def dispute_verdict(self, campaign_id: str, dispute_reason: str) -> None:
+        """Allows Brand to dispute AI verdict during cooling-off window and trigger LLM Validator Consensus resolution"""
+        if campaign_id not in self.campaigns:
+            raise UserError("Campaign not found")
+        campaign = self.campaigns[campaign_id]
+        if str(gl.message.sender_address).lower() != campaign.brand.lower():
+            raise UserError("Only the Brand can dispute")
+        if campaign.status != "AWAITING_PAYOUT":
+            raise UserError("Can only dispute during AWAITING_PAYOUT phase")
+            
+        campaign.status = "DISPUTED"
+        campaign.disputed_at = self._get_current_timestamp()
+        self.campaigns[campaign_id] = campaign
+        
+        # Trigger trustless validator consensus resolution
+        self.resolve_dispute(campaign_id, dispute_reason)
+
+    @gl.public.write
+    def resolve_dispute(self, campaign_id: str, dispute_evidence: str) -> None:
         """
-        Authorized resolution path for disputed escrow.
-        SECURITY: 
-        - Owner/Arbitrator can decide RELEASE, REFUND, SPLIT, or SLASH.
-        - Brand can ONLY voluntarily RELEASE funds (concession). Brand cannot self-refund or seize creator stake!
+        Trustless Decentralized Dispute Resolution.
+        SECURITY: Completely ownerless! Dispute outcome & stake slashing are determined 
+        100% by GenLayer Multi-Agent Validator Consensus (gl.vm.run_nondet) based on 
+        transcript/frame provenance and creator account authentication.
         """
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
-        if campaign.status != "DISPUTED":
-            raise UserError("Campaign is not in DISPUTED status")
+        if campaign.status not in ["AWAITING_PAYOUT", "DISPUTED"]:
+            raise UserError("Campaign is not in AWAITING_PAYOUT or DISPUTED status")
             
         caller = str(gl.message.sender_address).lower()
-        if caller != self.owner and caller != campaign.brand.lower():
-            raise UserError("Unauthorized: Only contract owner/arbitrator or brand can execute dispute resolution")
+        if caller != campaign.brand.lower() and caller != campaign.creator.lower():
+            raise UserError("Unauthorized: Only brand or creator can execute dispute resolution")
 
-        resolution_upper = str(resolution).upper().strip()
-        
-        # Anti-exploit check: Brand can only voluntarily release funds to creator
-        if caller == campaign.brand.lower() and caller != self.owner and resolution_upper != "RELEASE":
-            raise UserError("Brand can only voluntarily RELEASE funds to creator. Only owner/arbitrator can enforce REFUND, SPLIT, or SLASH.")
+        campaign.status = "DISPUTED"
+        if campaign.disputed_at <= bigint(0):
+            campaign.disputed_at = self._get_current_timestamp()
+        self.campaigns[campaign_id] = campaign
+
+        target_url = str(campaign.video_url)
+        camp_id = str(campaign_id)
+        creator_addr = str(campaign.creator)
+        c_handle = str(campaign.creator_handle)
+        blacklist = str(campaign.blacklist_keywords)
+        p_name = str(campaign.product_name)
+        c_cta = str(campaign.required_cta)
+        r_lang = str(campaign.required_lang)
+        b_logo = str(campaign.brand_logo)
+        l_url = str(campaign.logo_url)
+        d_reason = str(dispute_evidence)
+
+        def leader_fn():
+            try:
+                res_web = gl.nondet.web.render(target_url, mode="text")
+                content = res_web.content if hasattr(res_web, "content") else str(res_web)
+            except Exception as e:
+                content = f"Error fetching evidence: {str(e)}"
+                
+            prompt = f"""
+            You are an advanced Intelligent Contract Consensus Arbitrator for GenLayer.
+            Review the dispute evidence, authentic platform transcript, creator account handle, and frame provenance.
+
+            Campaign Spec:
+            - Campaign ID: "{camp_id}"
+            - Authentic Creator Handle: "{c_handle}" (Wallet: "{creator_addr}")
+            - Required Product: "{p_name}"
+            - Required CTA: "{c_cta}"
+            - Required Language: "{r_lang}"
+            - Brand Logo: "{b_logo}" (Logo URL: "{l_url}")
+            - Blacklist: "{blacklist}"
+
+            Brand Dispute Reason & Alleged Fraud Evidence:
+            {d_reason}
+
+            Authenticated Media Transcript & Metadata:
+            {content[:3000]}
+
+            MANDATORY DISPUTE EVALUATION RULES:
+            1. PLATFORM & CREATOR AUTHENTICATION:
+               - Verify that media is hosted on an authentic platform (YouTube, TikTok, Instagram, X).
+               - Verify post belongs to creator account "{c_handle}" bound to "{creator_addr}".
+               - If spoofed platform host or unauthenticated account -> SLASH (stake slashed to brand for deliberate fraud).
+
+            2. PROVENANCE & FRAUD ASSESSMENT:
+               - RELEASE: Dispute is unfounded. Transcript & frame provenance are authentic and compliant.
+               - REFUND: Dispute is valid. Content lacks required product/CTA or subtitles, but no deliberate malicious spoofing.
+               - SLASH: Confirmed malicious fraud, fake transcript, unauthenticated spoofed host, or fake evidence upload.
+               - SPLIT: Ambiguous evidence or partial compliance where fault is shared.
+
+            Return ONLY a valid JSON object:
+            {{"verdict": "RELEASE|REFUND|SLASH|SPLIT", "confidence": 100, "reason": "concise explanation"}}
+            """
+            try:
+                llm_res = gl.nondet.exec_prompt(prompt, response_format="json")
+                text_res = llm_res.content if hasattr(llm_res, "content") else str(llm_res)
+                return self._parse_llm_json(text_res)
+            except Exception as e:
+                return {"verdict": "REFUND", "confidence": 0, "reason": f"Dispute resolution LLM failure: {str(e)}"}
+
+        def validator_fn(leader_res) -> bool:
+            if not isinstance(leader_res, gl.vm.Return):
+                return False
+            leader_data = leader_res.calldata if hasattr(leader_res, "calldata") else leader_res
+            if not isinstance(leader_data, dict):
+                leader_data = self._parse_llm_json(str(leader_data))
+            mine_data = leader_fn()
+            return str(leader_data.get("verdict", "")).upper().strip() == str(mine_data.get("verdict", "")).upper().strip()
+
+        result = gl.vm.run_nondet(leader_fn, validator_fn)
+        if not isinstance(result, dict):
+            result = self._parse_llm_json(str(result))
+
+        resolution_upper = str(result.get("verdict", "REFUND")).upper().strip()
+        reason = str(result.get("reason", "Dispute resolved by validator consensus"))
+        if resolution_upper not in ["RELEASE", "REFUND", "SLASH", "SPLIT"]:
+            resolution_upper = "REFUND"
 
         amount = campaign.escrow_amount
         stake = campaign.creator_stake
         
         campaign.status = "CLOSED"
+        campaign.verdict = f"DISPUTE_{resolution_upper}"
+        campaign.reason = reason
+        campaign.confidence = bigint(100)
+        
         if resolution_upper == "RELEASE":
             # Award full payment + stake to creator
             gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(amount + stake))
@@ -535,9 +624,7 @@ class Contract(gl.Contract):
             if stake > bigint(0):
                 gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(stake))
         elif resolution_upper == "SLASH":
-            # Slashing applied on confirmed malicious fraud: Brand receives escrow + slashed creator stake (Owner/Arbitrator only)
-            if caller != self.owner:
-                raise UserError("Only owner/arbitrator can authorize stake slashing")
+            # Slashing determined BY VALIDATOR CONSENSUS on confirmed malicious fraud: Brand receives escrow + slashed creator stake
             gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(amount + stake))
         elif resolution_upper == "SPLIT":
             # Split escrow 50/50 and return stake to creator
@@ -545,8 +632,6 @@ class Contract(gl.Contract):
             rem = amount - half
             gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(half + stake))
             gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(rem))
-        else:
-            raise UserError("Invalid resolution: Must be RELEASE, REFUND, SPLIT, or SLASH")
             
         self.campaigns[campaign_id] = campaign
 
@@ -594,6 +679,7 @@ class Contract(gl.Contract):
         return json.dumps({
             "brand": c.brand,
             "creator": c.creator,
+            "creator_handle": c.creator_handle,
             "escrow_amount": str(c.escrow_amount),
             "creator_stake": str(c.creator_stake),
             "status": c.status,

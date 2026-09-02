@@ -73,6 +73,7 @@ function App() {
   // Create Campaign State (Brand)
   const [newCampId, setNewCampId] = useState('');
   const [creatorAddress, setCreatorAddress] = useState('');
+  const [creatorHandle, setCreatorHandle] = useState('');
   const [escrowAmount, setEscrowAmount] = useState('');
   const [blacklistKeywords, setBlacklistKeywords] = useState('');
   const [productName, setProductName] = useState('');
@@ -148,11 +149,12 @@ function App() {
     try {
       const cleanAmount = escrowAmount.replace(',', '.').trim();
       const amountInWei = ethers.parseEther(cleanAmount);
+      const handleClean = creatorHandle.trim() || '@creator';
       const txHash = await callWithRetry(() => client.writeContract({
         address: CONTRACT_ADDRESS,
         account: { address: account as any },
         functionName: 'create_campaign',
-        args: [newCampId, creatorAddress.trim(), blacklistKeywords, productName.trim(), requiredCta.trim(), requiredLang.trim(), campaignDesc.trim(), brandLogo.trim(), logoUrl.trim()],
+        args: [newCampId, creatorAddress.trim(), handleClean, blacklistKeywords, productName.trim(), requiredCta.trim(), requiredLang.trim(), campaignDesc.trim(), brandLogo.trim(), logoUrl.trim()],
         value: amountInWei
       }));
       
@@ -166,6 +168,7 @@ function App() {
       // Clean form
       setNewCampId('');
       setCreatorAddress('');
+      setCreatorHandle('');
       setEscrowAmount('');
       setBlacklistKeywords('');
       setProductName('');
@@ -265,15 +268,15 @@ function App() {
   const disputeVerdict = async () => {
     if (!client || !CONTRACT_ADDRESS) return;
     setIsSubmitting(true);
-    setLoadingMsg('Disputing AI verdict...');
+    setLoadingMsg('Disputing AI verdict and triggering Validator Consensus...');
     try {
       const txHash = await callWithRetry(() => client.writeContract({
         address: CONTRACT_ADDRESS,
         account: { address: account as any },
         functionName: 'dispute_verdict',
-        args: [campaignId]
+        args: [campaignId, 'Brand disputed AI verdict for non-compliance']
       }));
-      setLoadingMsg('Freezing escrow funds and logging dispute...');
+      setLoadingMsg('Freezing escrow funds and executing Validator Consensus resolution...');
       await client.waitForTransactionReceipt({ hash: txHash });
       fetchCampaign(campaignId);
       setSuccessMsg('Verdict disputed. Awaiting DAO/Admin review.');
@@ -559,6 +562,7 @@ function App() {
   const fillDemoData = () => {
     setNewCampId('summer_shoes_01');
     setCreatorAddress(account || '0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b');
+    setCreatorHandle('@SarahStyles');
     setEscrowAmount('5.0');
     setBlacklistKeywords('scam, fake product, fake discount');
     setProductName('girl sandals');

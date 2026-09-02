@@ -60,25 +60,12 @@ class MockGL:
     def get_contract_at(self, address):
         return MockContractStub(address, self.transfers)
 
-MockGL.public.write.payable = lambda fn: fn
-
-mock_mod = MagicMock()
-mock_mod.gl = MockGL()
-mock_mod.allow_storage = lambda cls: cls
-mock_mod.Address = MockAddress
-mock_mod.bigint = MockBigInt
-mock_mod.u256 = MockBigInt
-mock_mod.UserError = MockUserError
-mock_mod.TreeMap = dict
-mock_mod.DynArray = list
-
-sys.modules["genlayer"] = mock_mod
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contracts")))
+from tests.test_adversarial import mock_genlayer_mod, MockAddress, MockBigInt, MockUserError
 import contract as contract_module
 
 class TestAffiliateGuardRegressionSuite(unittest.TestCase):
     def setUp(self):
-        self.gl = mock_mod.gl
+        self.gl = mock_genlayer_mod.gl
         self.gl.transfers = []
         self.gl.message_raw = {"datetime": "2026-08-16T00:00:00+00:00"}
         self.owner = MockAddress("0xowner")
@@ -98,6 +85,7 @@ class TestAffiliateGuardRegressionSuite(unittest.TestCase):
         self.contract.create_campaign(
             self.cid,
             self.creator,
+            "@creator",
             "scam, fake, cheap",
             "girl sandals",
             "buy now",
@@ -166,13 +154,9 @@ class TestAffiliateGuardRegressionSuite(unittest.TestCase):
         # Brand disputes at T+10h
         self.gl.message_raw = {"datetime": "2026-08-16T10:00:00+00:00"}
         self.gl.message.sender_address = self.brand
-        self.contract.dispute_verdict(self.cid)
-        self.assertEqual(self.contract.campaigns[self.cid].status, "DISPUTED")
-
-        # Finalize blocked even after 24h
-        self.gl.message_raw = {"datetime": "2026-08-17T02:00:00+00:00"}
-        with self.assertRaises(MockUserError):
-            self.contract.finalize_payout(self.cid)
+        self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Dispute valid"}')
+        self.contract.dispute_verdict(self.cid, "Disputing content compliance")
+        self.assertEqual(self.contract.campaigns[self.cid].status, "CLOSED")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
