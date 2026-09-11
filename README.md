@@ -13,10 +13,10 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform that uses 
 1. **Brand Escrow:** Brands create a campaign with a designated Creator, escrow amount, product requirements, CTA, and blacklist keywords.
 2. **Creator Acceptance & Staking:** The designated Creator deposits a mandatory 20% stake to accept the campaign terms (skin-in-the-game to prevent spam).
 3. **Authentic Platform Evidence & Account Verification:** The Creator submits their media URL. The contract enforces:
-   - **Platform Host & Creator Account Authenticity:** Submissions must originate from authentic platform hosts (`youtube.com`, `tiktok.com`, `instagram.com`, `x.com`) AND be authored by the designated creator handle (`creator_handle`) associated with `creator_address` — raw unauthenticated pastebins and arbitrary creator-controlled sites are strictly rejected on-chain.
-   - **Account & Campaign Binding:** The AI consensus nodes verify that the video/post belongs to the authentic creator channel and embeds the specific `[Campaign: <id>]`.
-   - **Transcript & Audio Provenance Compliance:** Verifies spoken product mentions, verbal CTA, language subtitles, and zero blacklist keywords.
-   - **Frame & Visual Provenance Certification:** Distinguishes verified media markers (`[Visual Frame: <logo>]`) from mutable web text, defaulting to `PARTIAL` if visual frames cannot be certified from text alone.
+   - **Canonical Hostname Matching:** Rejects loose URL substring matching (e.g. `attacker.com/youtube.com`). Submissions must originate from exact canonical hosts (`youtube.com`, `youtu.be`, `tiktok.com`, `instagram.com`, `x.com`, `twitter.com`) verified via `_is_authenticated_platform_host`.
+   - **On-Chain Creator Account Registry:** Creators register their social handle on-chain (`register_creator_handle`). The contract verifies that platform metadata (JSON-LD author, oEmbed provider, meta author tags) matches the creator's registered handle bound to `creator_address`.
+   - **Audio Transcript Provenance:** Spoken product mentions, CTA, and language subtitles are verified strictly from caption/subtitle metadata tracks.
+   - **Non-Inference Visual Frame Provenance:** Plain webpage description text CANNOT certify visual frame pixels. If a Brand Logo is required, text-only evidence defaults to `PARTIAL` (forcing the mandatory 24-hour cooling-off window for Brand visual verification).
 4. **Decentralized Validator Consensus Dispute Resolution (Ownerless Slashing):**
    - **RELEASE/PARTIAL:** Payout enters a mandatory 24-hour cooling-off delay (`AWAITING_PAYOUT`). If no dispute occurs within 24h, payout is finalized.
    - **Safe Stake Protection:** Automatic stake slashing is decoupled from heuristic web scrapes. On non-compliance (`REFUND`), Brand receives 100% escrow refund, and Creator stake is safely returned to prevent loss from scraper glitches.
@@ -24,10 +24,10 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform that uses 
 
 ## Adversarial & Regression Test Suite
 
-An exhaustive test suite is implemented in [`tests/test_adversarial.py`](./tests/test_adversarial.py) (13 tests), [`tests/test_affiliate_guard.py`](./tests/test_affiliate_guard.py) (3 tests), [`tests/test_evidence_binding.py`](./tests/test_evidence_binding.py) (4 tests), and [`tests/test_adversarial.js`](./tests/test_adversarial.js) (12 simulations) covering:
-- **Authentic Platform Domain & Creator Account Enforcement**: Rejects unauthenticated pastebins and raw creator-controlled web URLs.
-- **Evidence Binding & Anti-Replay Defense**: Rejects unauthenticated third-party content lacking campaign ID and creator handle proof.
-- **Transcript & Frame Provenance Verification**: Distinguishes authentic visual media markers from plain mutable page text (yielding `PARTIAL` rather than full `RELEASE`).
+An exhaustive test suite is implemented in [`tests/test_adversarial.py`](./tests/test_adversarial.py) (13 tests), [`tests/test_affiliate_guard.py`](./tests/test_affiliate_guard.py) (3 tests), [`tests/test_evidence_binding.py`](./tests/test_evidence_binding.py) (6 tests), and [`tests/test_adversarial.js`](./tests/test_adversarial.js) (12 simulations) covering:
+- **Canonical Domain & Substring Exploit Defense**: Rejects unauthenticated pastebins and substring URL tricks (e.g., `attacker.com/youtube.com`).
+- **On-Chain Creator Account Registration**: Verifies handle binding via `register_creator_handle` and platform metadata author matching.
+- **Transcript & Frame Provenance Verification**: Enforces non-inference rules (yielding `PARTIAL` rather than full `RELEASE` for text-only evidence when visual logo is required).
 - **Safe Stake Protection**: Verifies Creator stake is never blindly slashed on heuristic scrapes.
 - **Trustless Validator Consensus Slashing**: Slashing is exclusively executable via multi-agent validator consensus (`gl.vm.run_nondet`) on confirmed fraud, completely eliminating owner control.
 - **Under-Staking Defense**: Rejects stake amounts < 20%.

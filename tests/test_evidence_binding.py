@@ -145,6 +145,19 @@ class TestEvidenceBindingAndVisualCompliance(unittest.TestCase):
         with self.assertRaises(contract_module.UserError, msg="Unauthenticated pastebin must be rejected"):
             self.contract.submit_video(self.cid, "https://pastebin.com/raw/malicious_fake_proof.txt")
 
+    def test_05_url_substring_exploit_rejected(self):
+        """Attacker URL embedding youtube.com in query or path on malicious host -> MUST REVERT"""
+        with self.assertRaises(contract_module.UserError, msg="Substring exploit URL must be rejected"):
+            self.contract.submit_video(self.cid, "https://attacker-scam-site.com/youtube.com/fake_proof.html")
+        with self.assertRaises(contract_module.UserError, msg="Substring query exploit URL must be rejected"):
+            self.contract.submit_video(self.cid, "https://attacker.com/proof?ref=youtube.com")
+
+    def test_06_onchain_creator_handle_registration(self):
+        """Creator registers social handle on-chain, contract uses registered handle for metadata account proof"""
+        self.gl.message.sender_address = self.creator
+        self.contract.register_creator_handle("@OfficialSarahStyles")
+        self.assertEqual(self.contract.creator_handles[self.creator.lower()], "@officialsarahstyles")
+
 if __name__ == "__main__":
     print("=" * 80)
     print("RUNNING EVIDENCE BINDING TEST SUITE (tests/test_evidence_binding.py)")

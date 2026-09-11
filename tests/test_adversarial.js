@@ -159,11 +159,23 @@ function runAdversarialSimulations() {
     assert.strictEqual(verdict, "PARTIAL", "Must not grant full RELEASE on mutable page text without verified visual media cue");
   });
 
-  it("Attack 10: Unauthenticated raw web pastebin URL -> MUST REVERT", () => {
-    const rawUrl = "https://raw-pastebin.com/fake_proof.html";
-    const validDomains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"];
-    const isDomainAllowed = validDomains.some(d => rawUrl.includes(d));
-    assert.strictEqual(isDomainAllowed, false, "Must reject unauthenticated raw web URLs not hosted on official media platforms");
+  it("Attack 10: Unauthenticated URL or substring domain exploit (e.g. attacker.com/youtube.com) -> MUST REVERT", () => {
+    const extractHost = (url) => {
+      let u = url.toLowerCase().trim();
+      if (u.includes("://")) u = u.split("://")[1];
+      return u.split("/")[0].split("?")[0].split("#")[0].split(":")[0].trim();
+    };
+    const isValidHost = (url) => {
+      const host = extractHost(url);
+      const allowed = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"];
+      return allowed.some(d => host === d || host.endsWith("." + d));
+    };
+
+    assert.strictEqual(isValidHost("https://pastebin.com/raw/proof"), false, "Raw pastebin rejected");
+    assert.strictEqual(isValidHost("https://attacker-scam-site.com/youtube.com/fake.html"), false, "Substring domain exploit in path rejected");
+    assert.strictEqual(isValidHost("https://attacker.com/proof?ref=youtube.com"), false, "Substring domain exploit in query params rejected");
+    assert.strictEqual(isValidHost("https://www.youtube.com/watch?v=sandals"), true, "Authentic YouTube domain accepted");
+    assert.strictEqual(isValidHost("https://m.tiktok.com/@creator/video"), true, "Authentic TikTok subdomain accepted");
   });
 
   it("Attack 11: Single-sig owner or brand cannot manually slash creator stake without Validator Consensus -> MUST REVERT", () => {

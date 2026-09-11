@@ -32,11 +32,42 @@ class Campaign:
 class Contract(gl.Contract):
     campaigns: TreeMap[str, Campaign]
     campaign_ids: DynArray[str]
+    creator_handles: TreeMap[str, str]
     owner: str
 
     def __init__(self):
         # DO NOT initialize TreeMap/DynArray here (Rule #2). GenVM automatically allocates memory.
         self.owner = str(gl.message.sender_address).lower()
+
+    @gl.public.write
+    def register_creator_handle(self, handle: str) -> None:
+        """Allows a Creator wallet to register their verified social handle/channel ID on-chain."""
+        caller = str(gl.message.sender_address).lower()
+        h_clean = str(handle).strip()
+        if not h_clean:
+            raise UserError("Handle cannot be empty")
+        if not h_clean.startswith("@"):
+            h_clean = "@" + h_clean
+        if not hasattr(self, "creator_handles") or self.creator_handles is None:
+            self.creator_handles = {}
+        self.creator_handles[caller] = h_clean.lower()
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract exact canonical hostname from URL without relying on loose substring search."""
+        u = str(url).lower().strip()
+        if "://" in u:
+            u = u.split("://", 1)[1]
+        host = u.split("/")[0].split("?")[0].split("#")[0].split(":")[0].strip()
+        return host
+
+    def _is_authenticated_platform_host(self, url: str) -> bool:
+        """Strictly validate that hostname matches or is a subdomain of an official media platform."""
+        host = self._extract_domain(url)
+        allowed_base_domains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"]
+        for domain in allowed_base_domains:
+            if host == domain or host.endswith("." + domain):
+                return True
+        return False
         
     def _get_current_timestamp(self) -> bigint:
         """Derive trusted timestamp from GenLayer transaction execution context (gl.message_raw).
@@ -82,15 +113,20 @@ class Contract(gl.Contract):
         if campaign_id in self.campaigns:
             raise UserError("Campaign ID already exists")
             
-        handle_clean = str(creator_handle).strip() if creator_handle else "@creator"
-        if not handle_clean.startswith("@"):
-            handle_clean = "@" + handle_clean
+        creator_lower = creator_address.lower()
+        if hasattr(self, "creator_handles") and self.creator_handles and creator_lower in self.creator_handles:
+            handle_clean = self.creator_handles[creator_lower]
+        else:
+            handle_clean = str(creator_handle).strip() if creator_handle else "@creator"
+            if not handle_clean.startswith("@"):
+                handle_clean = "@" + handle_clean
+            handle_clean = handle_clean.lower()
             
         self.campaign_ids.append(campaign_id)
         self.campaigns[campaign_id] = Campaign(
             brand=str(gl.message.sender_address).lower(),
-            creator=creator_address.lower(),
-            creator_handle=handle_clean.lower(),
+            creator=creator_lower,
+            creator_handle=handle_clean,
             escrow_amount=amount,
             creator_stake=bigint(0),
             status="PENDING_ACCEPTANCE",
@@ -117,7 +153,8 @@ class Contract(gl.Contract):
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
-        if str(gl.message.sender_address).lower() != campaign.creator.lower():
+        caller = str(gl.message.sender_address).lower()
+        if caller != campaign.creator.lower():
             raise UserError("Only the Creator can accept")
         if campaign.status != "PENDING_ACCEPTANCE":
             raise UserError("Campaign is not pending acceptance")
@@ -126,6 +163,9 @@ class Contract(gl.Contract):
         min_required_stake = campaign.escrow_amount // bigint(5) # Enforce 20% minimum stake
         if stake_amount < min_required_stake or stake_amount <= bigint(0):
             raise UserError(f"Insufficient stake: Creator must stake at least 20% of escrow ({min_required_stake})")
+            
+        if hasattr(self, "creator_handles") and self.creator_handles and caller in self.creator_handles:
+            campaign.creator_handle = self.creator_handles[caller]
             
         campaign.creator_stake = stake_amount
         campaign.status = "OPEN"
@@ -218,16 +258,19 @@ class Contract(gl.Contract):
              raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
              
-        if str(gl.message.sender_address).lower() != campaign.creator.lower():
+        caller = str(gl.message.sender_address).lower()
+        if caller != campaign.creator.lower():
             raise UserError("Only the designated creator can submit the video URL")
         if campaign.status not in ["OPEN", "CANCEL_REQUESTED", "NEEDS_REVISION"]:
             raise UserError("Campaign is not OPEN, pending cancellation, or needing revision")
         
-        # Enforce authentic media platform domain (reject unauthenticated creator-controlled raw web text / pastebins)
-        target_url_lower = str(video_url).lower().strip()
-        valid_domains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "x.com", "twitter.com"]
-        if not any(d in target_url_lower for d in valid_domains):
-            raise UserError("Invalid evidence source: Submission must be hosted on an authentic media platform (YouTube, TikTok, Instagram, X)")
+        # Enforce authentic media platform domain (exact canonical hostname check, no loose substring matching!)
+        if not self._is_authenticated_platform_host(video_url):
+            raise UserError("Invalid evidence source: Submission host is not an authentic media platform (YouTube, TikTok, Instagram, X)")
+
+        # Sync handle if registered on-chain
+        if hasattr(self, "creator_handles") and self.creator_handles and caller in self.creator_handles:
+            campaign.creator_handle = self.creator_handles[caller]
 
         campaign.video_url = video_url
         campaign.status = "IN_PROGRESS"
@@ -256,36 +299,38 @@ class Contract(gl.Contract):
                 
             prompt = f"""
             You are an advanced Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
-            Review the authentic platform transcript, video description, creator account metadata, and media provenance meticulously.
+            Review the authentic platform transcript, creator account metadata, and media provenance meticulously.
 
-            MANDATORY VERIFICATION RULES:
+            MANDATORY STRICT PROVENANCE & AUTHENTICATION RULES (NON-INFERENCE ENFORCED):
             1. PLATFORM HOST & CREATOR ACCOUNT AUTHENTICATION:
-               - Platform Host Authenticity: Verify that evidence originates from an authentic platform host (YouTube, TikTok, Instagram, X/Twitter).
-               - Creator Account Authenticity: Verify that the content is posted by the authentic creator handle "{c_handle}" associated with creator wallet "{creator_addr}".
+               - Verify that evidence originates from an authentic platform host (YouTube, TikTok, Instagram, X/Twitter).
+               - Verify creator account proof from structured platform metadata (e.g. JSON-LD author, oEmbed provider, meta author, channel URL @handle) matching registered creator handle "{c_handle}" bound to creator wallet "{creator_addr}".
+               - Do NOT treat supplied handles in plain user description text as account proof.
                - Campaign Binding: Verify that the content explicitly references Campaign ID "{camp_id}".
-               - If the post lacks creator handle/wallet binding or originates from an unauthenticated spoofed host, return REFUND with reason "Unauthenticated creator account or platform host".
+               - If post lacks creator handle/wallet binding in platform metadata, return REFUND.
 
-            2. TRANSCRIPT & AUDIO PROVENANCE COMPLIANCE:
-               - Product Review: Product "{p_name}" must be clearly featured.
-               - Call-To-Action (CTA): Must include CTA: "{c_cta}".
-               - Dialogue & Subtitles: Dialogue or subtitles must be in: "{r_lang}".
+            2. AUDIO TRANSCRIPT PROVENANCE COMPLIANCE:
+               - Product Review: Product "{p_name}" and Call-To-Action "{c_cta}" MUST originate from verified audio captions or subtitle tracks in "{r_lang}".
+               - Do NOT infer audio speech or transcript provenance from user description body text or comments.
                - Blacklist Avoidance: Must strictly AVOID keywords: "{blacklist}". If used -> REFUND.
 
-            3. FRAME & VISUAL PROVENANCE CERTIFICATION:
-               - Brand Logo Requirement: "{b_logo}" (Reference URL: "{l_url}").
-               - Verify timestamped visual frame cues, caption markers, or visual presence (e.g., [Visual Frame: {b_logo}]).
-               - Do NOT treat arbitrary mutable webpage body text as visual proof without verified frame provenance.
-               - If transcript is compliant but visual frame provenance cannot be certified from text alone, return PARTIAL for brand inspection window.
+            3. FRAME & VISUAL PROVENANCE (STRICT NON-INFERENCE RULE):
+               - Rendered text CANNOT prove 2D visual frame pixels.
+               - If Brand Logo is required ("{b_logo}", Logo URL: "{l_url}"):
+                 * Do NOT infer visual frame presence from plain description text.
+                 * If audio transcript is fully compliant, return PARTIAL (cooling-off delay for Brand visual inspection).
+                 * Return RELEASE ONLY if brand logo is "None" or certified frame hash/metadata is present.
+                 * Return REFUND if audio transcript is non-compliant or missing creator account binding.
 
             Return ONLY a valid JSON object:
             {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
 
-            - RELEASE: All criteria passed (Authentic platform host & creator account bound, product reviewed, CTA verified, zero blacklist words, frame provenance certified).
-            - PARTIAL: Bound campaign with valid transcript, but missing localized subtitles or missing visual frame provenance.
-            - REFUND: Missing creator account binding, missing product/CTA, or blacklisted words.
+            - RELEASE: All criteria passed (Authentic platform host & creator account bound, audio transcript verified, zero blacklist words, logo is None or certified frame metadata present).
+            - PARTIAL: Bound campaign with valid transcript, but missing localized subtitles or requiring Brand visual logo frame inspection.
+            - REFUND: Missing creator account binding in metadata, missing product/CTA, or blacklisted words.
             - ESCALATE: Unreachable URL, 404, or indecipherable media transcript.
 
-            Authenticated Evidence Content:
+            Authenticated Evidence Content & Metadata:
             {content[:3000]}
             """
             try:
