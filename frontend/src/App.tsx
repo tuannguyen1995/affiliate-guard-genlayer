@@ -66,6 +66,7 @@ function App() {
   // Action States
   const [videoUrl, setVideoUrl] = useState('');
   const [appealText, setAppealText] = useState('');
+  const [registerHandleInput, setRegisterHandleInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -366,6 +367,32 @@ function App() {
       setIsSubmitting(false);
       setLoadingMsg('');
       setAppealText('');
+    }
+  };
+
+  const registerCreatorHandle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!client || !CONTRACT_ADDRESS) return;
+    setIsSubmitting(true);
+    setLoadingMsg('Registering handle on-chain...');
+    setSuccessMsg('');
+    try {
+      const txHash = await callWithRetry(() => client.writeContract({
+        address: CONTRACT_ADDRESS,
+        account: { address: account as any },
+        functionName: 'register_creator_handle',
+        args: [registerHandleInput]
+      }));
+      setLoadingMsg('Writing verified creator handle to GenLayer blockchain...');
+      await client.waitForTransactionReceipt({ hash: txHash });
+      setSuccessMsg(`Handle ${registerHandleInput} registered on-chain successfully!`);
+      setRegisterHandleInput('');
+    } catch (error: any) {
+      console.error(error);
+      alert('Handle registration failed: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+      setLoadingMsg('');
     }
   };
 
@@ -866,6 +893,26 @@ function App() {
             )) : (
               <div className="panel">
                 <h2>Creator Actions</h2>
+
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', margin: '0 0 0.5rem 0' }}>🔗 Register On-Chain Social Handle</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0' }}>Bind your wallet to your authentic social handle (e.g. @SarahStyles) on the GenLayer blockchain to satisfy AI Judge provenance checks.</p>
+                  <form onSubmit={registerCreatorHandle} style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      placeholder="@handle (e.g. @SarahStyles)" 
+                      value={registerHandleInput} 
+                      onChange={e => setRegisterHandleInput(e.target.value)} 
+                      required 
+                      disabled={isSubmitting} 
+                      style={{ flex: 1, padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                    />
+                    <button type="submit" className="btn-secondary" disabled={isSubmitting || !account} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                      Register Handle
+                    </button>
+                  </form>
+                </div>
+
                 {!campaignData ? (
                   <div className="alert alert-warning">Load a campaign to submit video.</div>
                 ) : (
