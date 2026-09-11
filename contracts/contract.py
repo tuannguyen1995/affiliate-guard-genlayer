@@ -49,7 +49,7 @@ class Contract(gl.Contract):
         if not h_clean.startswith("@"):
             h_clean = "@" + h_clean
         if not hasattr(self, "creator_handles") or self.creator_handles is None:
-            self.creator_handles = {}
+            self.creator_handles = TreeMap() if 'TreeMap' in globals() and callable(TreeMap) else {}
         self.creator_handles[caller] = h_clean.lower()
 
     def _extract_domain(self, url: str) -> str:
@@ -768,3 +768,37 @@ class Contract(gl.Contract):
                     "escrow_amount": str(camp.escrow_amount)
                 })
         return json.dumps(my_campaigns)
+
+    @gl.public.view
+    def get_all_campaigns(self) -> str:
+        """Authoritative public view for frontend dashboard synchronization."""
+        all_campaigns = []
+        for i in range(len(self.campaign_ids)):
+            cid = self.campaign_ids[i]
+            if cid in self.campaigns:
+                c = self.campaigns[cid]
+                all_campaigns.append({
+                    "id": cid,
+                    "brand": c.brand,
+                    "creator": c.creator,
+                    "creator_handle": c.creator_handle,
+                    "escrow_amount": str(c.escrow_amount),
+                    "creator_stake": str(c.creator_stake),
+                    "status": c.status,
+                    "video_url": c.video_url,
+                    "verdict": c.verdict,
+                    "reason": c.reason,
+                    "confidence": str(c.confidence),
+                    "blacklist_keywords": c.blacklist_keywords,
+                    "cancel_requested_at": str(c.cancel_requested_at),
+                    "resubmissions": str(c.resubmissions),
+                    "payout_ready_at": str(c.payout_ready_at),
+                    "disputed_at": str(c.disputed_at),
+                    "product_name": c.product_name,
+                    "required_cta": c.required_cta,
+                    "required_lang": c.required_lang,
+                    "campaign_desc": c.campaign_desc,
+                    "brand_logo": c.brand_logo,
+                    "logo_url": c.logo_url
+                })
+        return json.dumps(all_campaigns)

@@ -95,6 +95,7 @@ class TestEvidenceBindingAndVisualCompliance(unittest.TestCase):
         self.contract = contract_module.Contract()
         self.contract.campaigns = {}
         self.contract.campaign_ids = []
+        self.contract.creator_handles = {}
         self.contract.owner = self.brand.lower()
 
         self.cid = "camp_sandals_2026"
