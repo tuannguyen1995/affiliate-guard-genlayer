@@ -322,16 +322,19 @@ class Contract(gl.Contract):
                  * Return RELEASE ONLY if brand logo is "None" or certified frame hash/metadata is present.
                  * Return REFUND if audio transcript is non-compliant or missing creator account binding.
 
+            4. STRUCTURED METADATA REQUIREMENT:
+               - If the platform does not provide an independent structured subtitle/closed caption track or oEmbed/JSON-LD author metadata, the contract MUST rule ESCALATE or PARTIAL instead of using HTML description text to infer provenance or account proof.
+
             Return ONLY a valid JSON object:
             {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
 
-            - RELEASE: All criteria passed (Authentic platform host & creator account bound, audio transcript verified, zero blacklist words, logo is None or certified frame metadata present).
+            - RELEASE: All criteria passed (Authentic platform host & creator account bound with structured metadata, audio transcript verified, zero blacklist words, logo is None or certified frame metadata present).
             - PARTIAL: Bound campaign with valid transcript, but missing localized subtitles or requiring Brand visual logo frame inspection.
             - REFUND: Missing creator account binding in metadata, missing product/CTA, or blacklisted words.
-            - ESCALATE: Unreachable URL, 404, or indecipherable media transcript.
+            - ESCALATE: Unreachable URL, 404, indecipherable media transcript, or missing structured captions/metadata.
 
             Authenticated Evidence Content & Metadata:
-            {content[:3000]}
+            {content}
             """
             try:
                 llm_res = gl.nondet.exec_prompt(prompt, response_format="json")
@@ -426,12 +429,13 @@ class Contract(gl.Contract):
             {appeal_text}
             
             Authenticated Media Content & Transcript:
-            {content[:3000]}
+            {content}
             
             MANDATORY RULES:
             1. Verify Campaign ID "{camp_id}" and Creator "{creator_addr}" binding in evidence.
             2. Verify authentic transcript covers product "{p_name}" and CTA "{c_cta}" with zero blacklist words.
             3. For visual logo compliance, verify authentic media cues/visual caption markers.
+            4. If independent structured subtitle tracks or oEmbed/JSON-LD author metadata are absent, DO NOT infer audio speech or visual frame pixels from HTML description text. Rule PARTIAL or REFUND.
             
             Return ONLY a JSON: {{"verdict": "RELEASE|PARTIAL|REFUND", "confidence": 100, "reason": "concise explanation"}}
             """
@@ -610,7 +614,7 @@ class Contract(gl.Contract):
             {d_reason}
 
             Authenticated Media Transcript & Metadata:
-            {content[:3000]}
+            {content}
 
             MANDATORY DISPUTE EVALUATION RULES:
             1. PLATFORM & CREATOR AUTHENTICATION:
@@ -623,6 +627,9 @@ class Contract(gl.Contract):
                - REFUND: Dispute is valid. Content lacks required product/CTA or subtitles, but no deliberate malicious spoofing.
                - SLASH: Confirmed malicious fraud, fake transcript, unauthenticated spoofed host, or fake evidence upload.
                - SPLIT: Ambiguous evidence or partial compliance where fault is shared.
+
+            3. STRUCTURED METADATA REQUIREMENT:
+               - If independent structured subtitle tracks or oEmbed/JSON-LD author metadata are missing, DO NOT use HTML body text descriptions to infer provenance. Rule PARTIAL or ESCALATE/REFUND instead of RELEASE.
 
             Return ONLY a valid JSON object:
             {{"verdict": "RELEASE|REFUND|SLASH|SPLIT", "confidence": 100, "reason": "concise explanation"}}

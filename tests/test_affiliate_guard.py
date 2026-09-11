@@ -60,12 +60,15 @@ class MockGL:
     def get_contract_at(self, address):
         return MockContractStub(address, self.transfers)
 
-from tests.test_adversarial import mock_genlayer_mod, MockAddress, MockBigInt, MockUserError
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contracts")))
 import contract as contract_module
+MockAddress = contract_module.Address
+MockBigInt = contract_module.bigint
+MockUserError = contract_module.UserError
 
 class TestAffiliateGuardRegressionSuite(unittest.TestCase):
     def setUp(self):
-        self.gl = mock_genlayer_mod.gl
+        self.gl = contract_module.gl
         self.gl.transfers = []
         self.gl.message_raw = {"datetime": "2026-08-16T00:00:00+00:00"}
         self.owner = MockAddress("0xowner")
