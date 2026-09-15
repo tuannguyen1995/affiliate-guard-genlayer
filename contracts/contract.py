@@ -4,6 +4,8 @@ from genlayer import *
 from dataclasses import dataclass
 import json
 
+UserError = getattr(getattr(gl, 'vm', None), 'UserError', globals().get('UserError', Exception))
+
 @allow_storage
 @dataclass
 class Campaign:
