@@ -829,7 +829,7 @@ class Contract(gl.Contract):
             "confidence": str(c.confidence),
             "blacklist_keywords": c.blacklist_keywords,
             "cancel_requested_at": str(c.cancel_requested_at),
-            "resubmissions": c.resubmissions,
+            "resubmissions": str(c.resubmissions),
             "payout_ready_at": str(c.payout_ready_at),
             "disputed_at": str(c.disputed_at),
             "product_name": c.product_name,
