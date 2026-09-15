@@ -39,6 +39,11 @@ class Contract(gl.Contract):
         # DO NOT initialize TreeMap/DynArray here (Rule #2). GenVM automatically allocates memory.
         self.owner = str(gl.message.sender_address).lower()
 
+    def _safe_transfer(self, to_addr: str, amount: bigint) -> None:
+        """Helper to transfer funds using native bigint without unsupported casting."""
+        if amount > bigint(0):
+            gl.get_contract_at(Address(to_addr.lower().strip())).emit_transfer(value=amount)
+
     @gl.public.write
     def register_creator_handle(self, handle: str) -> None:
         """Allows a Creator wallet to register their verified social handle/channel ID on-chain."""
@@ -184,7 +189,7 @@ class Contract(gl.Contract):
             
         campaign.status = "CANCELLED"
         self.campaigns[campaign_id] = campaign
-        gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(campaign.escrow_amount))
+        self._safe_transfer(campaign.brand, campaign.escrow_amount)
 
     @gl.public.write
     def cancel_campaign(self, campaign_id: str) -> None:
@@ -218,9 +223,8 @@ class Contract(gl.Contract):
         self.campaigns[campaign_id] = campaign
         
         # Refund brand and return creator stake
-        gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(campaign.escrow_amount))
-        if campaign.creator_stake > bigint(0):
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(campaign.creator_stake))
+        self._safe_transfer(campaign.brand, campaign.escrow_amount)
+        self._safe_transfer(campaign.creator, campaign.creator_stake)
 
     @gl.public.write
     def force_cancel(self, campaign_id: str) -> None:
@@ -248,9 +252,8 @@ class Contract(gl.Contract):
         campaign.status = "CANCELLED"
         self.campaigns[campaign_id] = campaign
         
-        gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(campaign.escrow_amount))
-        if campaign.creator_stake > bigint(0):
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(campaign.creator_stake))
+        self._safe_transfer(campaign.brand, campaign.escrow_amount)
+        self._safe_transfer(campaign.creator, campaign.creator_stake)
 
     @gl.public.write
     def submit_video(self, campaign_id: str, video_url: str, evidence_json: str = "") -> None:
@@ -558,9 +561,8 @@ class Contract(gl.Contract):
             else:
                 campaign.status = "CLOSED"
                 # Safe terminal fund flow: Brand receives escrow refund, Creator stake is safely returned (no blind slashing on web scrapes)
-                gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(campaign.escrow_amount))
-                if campaign.creator_stake > bigint(0):
-                    gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(campaign.creator_stake))
+                self._safe_transfer(campaign.brand, campaign.escrow_amount)
+                self._safe_transfer(campaign.creator, campaign.creator_stake)
         else: # ESCALATE state (from initial check)
             campaign.status = "ESCALATED"
             
@@ -594,13 +596,13 @@ class Contract(gl.Contract):
         campaign.status = "CLOSED"
         if actual_verdict == "RELEASE":
             # Return creator's stake and release escrow amount to creator
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(amount + stake))
+            self._safe_transfer(campaign.creator, amount + stake)
         elif actual_verdict == "PARTIAL":
             # Return creator's stake, pay half escrow to creator, half refund to brand
             half = amount // bigint(2)
             rem = amount - half
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(half + stake))
-            gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(rem))
+            self._safe_transfer(campaign.creator, half + stake)
+            self._safe_transfer(campaign.brand, rem)
         
         self.campaigns[campaign_id] = campaign
 
@@ -754,21 +756,20 @@ class Contract(gl.Contract):
         
         if resolution_upper == "RELEASE":
             # Award full payment + stake to creator
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(amount + stake))
+            self._safe_transfer(campaign.creator, amount + stake)
         elif resolution_upper == "REFUND":
             # Refund escrow to brand, return stake to creator
-            gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(amount))
-            if stake > bigint(0):
-                gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(stake))
+            self._safe_transfer(campaign.brand, amount)
+            self._safe_transfer(campaign.creator, stake)
         elif resolution_upper == "SLASH":
             # Slashing determined BY VALIDATOR CONSENSUS on confirmed malicious fraud: Brand receives escrow + slashed creator stake
-            gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(amount + stake))
+            self._safe_transfer(campaign.brand, amount + stake)
         elif resolution_upper == "SPLIT":
             # Split escrow 50/50 and return stake to creator
             half = amount // bigint(2)
             rem = amount - half
-            gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(half + stake))
-            gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(rem))
+            self._safe_transfer(campaign.creator, half + stake)
+            self._safe_transfer(campaign.brand, rem)
             
         self.campaigns[campaign_id] = campaign
 
@@ -802,8 +803,8 @@ class Contract(gl.Contract):
         
         half = amount // bigint(2)
         rem = amount - half
-        gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(half + stake))
-        gl.get_contract_at(Address(campaign.brand)).emit_transfer(value=u256(rem))
+        self._safe_transfer(campaign.creator, half + stake)
+        self._safe_transfer(campaign.brand, rem)
         
         self.campaigns[campaign_id] = campaign
 
