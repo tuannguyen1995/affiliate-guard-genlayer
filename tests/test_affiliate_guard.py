@@ -60,10 +60,21 @@ class MockGL:
     def get_contract_at(self, address):
         return MockContractStub(address, self.transfers)
 
+MockGL.public.write.payable = lambda fn: fn
+
+mock_genlayer_mod = MagicMock()
+mock_genlayer_mod.gl = MockGL()
+mock_genlayer_mod.allow_storage = lambda cls: cls
+mock_genlayer_mod.Address = MockAddress
+mock_genlayer_mod.bigint = MockBigInt
+mock_genlayer_mod.u256 = MockBigInt
+mock_genlayer_mod.UserError = MockUserError
+mock_genlayer_mod.TreeMap = dict
+mock_genlayer_mod.DynArray = list
+sys.modules["genlayer"] = mock_genlayer_mod
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "contracts")))
 import contract as contract_module
-MockAddress = contract_module.Address
-MockBigInt = contract_module.bigint
 MockUserError = contract_module.UserError
 
 class TestAffiliateGuardRegressionSuite(unittest.TestCase):
@@ -105,12 +116,19 @@ class TestAffiliateGuardRegressionSuite(unittest.TestCase):
 
     def test_01_brand_cannot_finalize_immediately_before_24h(self):
         """REGRESSION: Brand attempts early finalization during cooling-off window -> MUST REVERT"""
-        # Creator submits compliant video
+        # Creator submits compliant video with structured evidence
+        import json
+        structured_ev = json.dumps({
+            "author_metadata": {"handle": "@sarah_fashion", "verified": True, "creator_address": "0xcreator"},
+            "captions": {"transcript": "Authentic video transcript: girl sandals buy now in English", "language": "English"},
+            "visual_proof": {"logo_detected": True, "logo_name": "Koala Logo", "frame_timestamp_ms": 1000}
+        })
         self.gl.message.sender_address = self.creator
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Authentic video transcript: girl sandals buy now in English")
         self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 100, "reason": "All campaign criteria met"}')
-        self.contract.submit_video(self.cid, "https://youtube.com/watch?v=sandals_review")
+        self.contract.submit_video(self.cid, "https://youtube.com/watch?v=sandals_review", structured_ev)
         self.assertEqual(self.contract.campaigns[self.cid].status, "AWAITING_PAYOUT")
+        self.assertEqual(self.contract.campaigns[self.cid].verdict, "RELEASE")
 
         # Brand tries to finalize early at T+6h -> MUST REVERT
         self.gl.message_raw = {"datetime": "2026-08-16T06:00:00+00:00"}
@@ -148,18 +166,27 @@ class TestAffiliateGuardRegressionSuite(unittest.TestCase):
             self.contract._get_current_timestamp()
 
     def test_03_dispute_blocks_finalize_and_allows_arbitration(self):
-        """Dispute flow transitions to DISPUTED and prevents early payout."""
+        """Dispute flow transitions to persisted DISPUTED and is subsequently resolved by resolve_dispute."""
         self.gl.message.sender_address = self.creator
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Transcript content")
-        self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 100, "reason": "Passed"}')
+        self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "PARTIAL", "confidence": 100, "reason": "Passed"}')
         self.contract.submit_video(self.cid, "https://youtube.com/watch?v=review")
 
-        # Brand disputes at T+10h
+        # Brand disputes at T+10h -> Status is persisted as DISPUTED on-chain
         self.gl.message_raw = {"datetime": "2026-08-16T10:00:00+00:00"}
         self.gl.message.sender_address = self.brand
-        self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Dispute valid"}')
         self.contract.dispute_verdict(self.cid, "Disputing content compliance")
+        self.assertEqual(self.contract.campaigns[self.cid].status, "DISPUTED")
+
+        # Attempting finalize while DISPUTED -> MUST REVERT
+        with self.assertRaises(MockUserError):
+            self.contract.finalize_payout(self.cid)
+
+        # Later, Brand or Creator calls resolve_dispute to resolve via consensus
+        self.gl.nondet.exec_prompt = lambda p, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Dispute valid"}')
+        self.contract.resolve_dispute(self.cid, "Dispute evidence")
         self.assertEqual(self.contract.campaigns[self.cid].status, "CLOSED")
+        self.assertEqual(self.contract.campaigns[self.cid].verdict, "DISPUTE_REFUND")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

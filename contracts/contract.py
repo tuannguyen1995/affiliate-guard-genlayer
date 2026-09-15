@@ -253,7 +253,7 @@ class Contract(gl.Contract):
             gl.get_contract_at(Address(campaign.creator)).emit_transfer(value=u256(campaign.creator_stake))
 
     @gl.public.write
-    def submit_video(self, campaign_id: str, video_url: str) -> None:
+    def submit_video(self, campaign_id: str, video_url: str, evidence_json: str = "") -> None:
         if campaign_id not in self.campaigns:
              raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
@@ -264,20 +264,35 @@ class Contract(gl.Contract):
         if campaign.status not in ["OPEN", "CANCEL_REQUESTED", "NEEDS_REVISION"]:
             raise UserError("Campaign is not OPEN, pending cancellation, or needing revision")
         
+        # Check if structured evidence was provided
+        structured_evidence = None
+        evidence_raw = str(evidence_json).strip() if evidence_json else ""
+        if not evidence_raw and str(video_url).strip().startswith("{") and str(video_url).strip().endswith("}"):
+            evidence_raw = str(video_url).strip()
+        if evidence_raw:
+            try:
+                structured_evidence = json.loads(evidence_raw)
+            except Exception:
+                structured_evidence = None
+
+        # Extract target media url from structured evidence or parameter
+        target_url = str(video_url).strip()
+        if structured_evidence and isinstance(structured_evidence, dict):
+            target_url = str(structured_evidence.get("media_url", structured_evidence.get("url", video_url))).strip()
+
         # Enforce authentic media platform domain (exact canonical hostname check, no loose substring matching!)
-        if not self._is_authenticated_platform_host(video_url):
+        if not self._is_authenticated_platform_host(target_url):
             raise UserError("Invalid evidence source: Submission host is not an authentic media platform (YouTube, TikTok, Instagram, X)")
 
         # Sync handle if registered on-chain
         if hasattr(self, "creator_handles") and self.creator_handles and caller in self.creator_handles:
             campaign.creator_handle = self.creator_handles[caller]
 
-        campaign.video_url = video_url
+        campaign.video_url = target_url
         campaign.status = "IN_PROGRESS"
         self.campaigns[campaign_id] = campaign
         
         # Capture variables into scope for closure
-        target_url = str(video_url)
         camp_id = str(campaign_id)
         creator_addr = str(campaign.creator)
         c_handle = str(campaign.creator_handle)
@@ -287,55 +302,83 @@ class Contract(gl.Contract):
         r_lang = str(campaign.required_lang)
         b_logo = str(campaign.brand_logo)
         l_url = str(campaign.logo_url)
+        has_structured = structured_evidence is not None and isinstance(structured_evidence, dict)
+        struct_data = structured_evidence if has_structured else {}
 
         def leader_fn():
-            try:
-                res_web = gl.nondet.web.render(target_url, mode="text")
-                content = res_web.content if hasattr(res_web, "content") else str(res_web)
-                if any(err in content[:400].lower() for err in ["404 not found", "error 404", "not found"]):
-                    return {"verdict": "ESCALATE", "confidence": 100, "reason": "Network error or 404 - No content retrieved."}
-            except Exception as e:
-                return {"verdict": "ESCALATE", "confidence": 100, "reason": f"Network error or 404: {str(e)}"}
-                
-            prompt = f"""
-            You are an advanced Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
-            Review the authentic platform transcript, creator account metadata, and media provenance meticulously.
+            if has_structured:
+                # PATH A: AUTHENTICATED, STRUCTURALLY SEPARATED EVIDENCE
+                auth_meta = str(struct_data.get("author_metadata", ""))
+                captions = str(struct_data.get("captions", struct_data.get("transcript", "")))
+                visual_proof = str(struct_data.get("visual_proof", struct_data.get("visual_frame_proof", "")))
 
-            MANDATORY STRICT PROVENANCE & AUTHENTICATION RULES (NON-INFERENCE ENFORCED):
-            1. PLATFORM HOST & CREATOR ACCOUNT AUTHENTICATION:
-               - Verify that evidence originates from an authentic platform host (YouTube, TikTok, Instagram, X/Twitter).
-               - Verify creator account proof from structured platform metadata (e.g. JSON-LD author, oEmbed provider, meta author, channel URL @handle) matching registered creator handle "{c_handle}" bound to creator wallet "{creator_addr}".
-               - Do NOT treat supplied handles in plain user description text as account proof.
-               - Campaign Binding: Verify that the content explicitly references Campaign ID "{camp_id}".
-               - If post lacks creator handle/wallet binding in platform metadata, return REFUND.
+                prompt = f"""
+                You are an Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
+                You are evaluating AUTHENTICATED, STRUCTURALLY SEPARATED EVIDENCE:
 
-            2. AUDIO TRANSCRIPT PROVENANCE COMPLIANCE:
-               - Product Review: Product "{p_name}" and Call-To-Action "{c_cta}" MUST originate from verified audio captions or subtitle tracks in "{r_lang}".
-               - Do NOT infer audio speech or transcript provenance from user description body text or comments.
-               - Blacklist Avoidance: Must strictly AVOID keywords: "{blacklist}". If used -> REFUND.
+                Campaign Criteria:
+                - Campaign ID: "{camp_id}"
+                - Registered Creator Handle: "{c_handle}" (Wallet: "{creator_addr}")
+                - Required Product: "{p_name}"
+                - Required CTA: "{c_cta}"
+                - Required Language: "{r_lang}"
+                - Brand Logo: "{b_logo}" (Logo URL: "{l_url}")
+                - Blacklist to avoid: "{blacklist}"
 
-            3. FRAME & VISUAL PROVENANCE (STRICT NON-INFERENCE RULE):
-               - Rendered text CANNOT prove 2D visual frame pixels.
-               - If Brand Logo is required ("{b_logo}", Logo URL: "{l_url}"):
-                 * Do NOT infer visual frame presence from plain description text.
-                 * If audio transcript is fully compliant, return PARTIAL (cooling-off delay for Brand visual inspection).
-                 * Return RELEASE ONLY if brand logo is "None" or certified frame hash/metadata is present.
-                 * Return REFUND if audio transcript is non-compliant or missing creator account binding.
+                STRUCTURALLY SEPARATED EVIDENCE:
+                1. Platform & Author Metadata: {auth_meta}
+                2. Spoken Caption/Audio Track: {captions}
+                3. Visual Frame Proof: {visual_proof}
 
-            4. STRUCTURED METADATA REQUIREMENT:
-               - If the platform does not provide an independent structured subtitle/closed caption track or oEmbed/JSON-LD author metadata, the contract MUST rule ESCALATE or PARTIAL instead of using HTML description text to infer provenance or account proof.
+                MANDATORY RULES:
+                - Verify Author Metadata explicitly binds to registered creator handle "{c_handle}" and creator "{creator_addr}".
+                - Verify Caption/Audio Track covers product "{p_name}" and CTA "{c_cta}" in language "{r_lang}" with ZERO blacklist words.
+                - Verify Visual Frame Proof certifies the brand logo "{b_logo}" (or logo is "None").
+                - If ALL 3 components are verified and compliant: return RELEASE.
+                - If captions or author metadata are missing or invalid, or blacklist words used: return REFUND.
+                - If media/proof is indecipherable: return ESCALATE.
 
-            Return ONLY a valid JSON object:
-            {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
+                Return ONLY a valid JSON object:
+                {{"verdict": "RELEASE|PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
+                """
+            else:
+                # PATH B: UNSUPPORTED RENDERED TEXT (SCRAPED FROM RAW WEBPAGE URL)
+                # CRITICAL SECURITY RULE: Unsupported rendered text CANNOT determine funds (cannot cause RELEASE or SLASH)!
+                try:
+                    res_web = gl.nondet.web.render(target_url, mode="text")
+                    content = res_web.content if hasattr(res_web, "content") else str(res_web)
+                    if any(err in content[:400].lower() for err in ["404 not found", "error 404", "not found"]):
+                        return {"verdict": "ESCALATE", "confidence": 100, "reason": "Network error or 404 - No content retrieved."}
+                except Exception as e:
+                    return {"verdict": "ESCALATE", "confidence": 100, "reason": f"Network error or 404: {str(e)}"}
 
-            - RELEASE: All criteria passed (Authentic platform host & creator account bound with structured metadata, audio transcript verified, zero blacklist words, logo is None or certified frame metadata present).
-            - PARTIAL: Bound campaign with valid transcript, but missing localized subtitles or requiring Brand visual logo frame inspection.
-            - REFUND: Missing creator account binding in metadata, missing product/CTA, or blacklisted words.
-            - ESCALATE: Unreachable URL, 404, indecipherable media transcript, or missing structured captions/metadata.
+                prompt = f"""
+                You are an Intelligent Contract consensus judge for an affiliate marketing campaign on GenLayer.
+                Review the submitted evidence scraped from the webpage.
 
-            Authenticated Evidence Content & Metadata:
-            {content}
-            """
+                CRITICAL FUND-DETERMINATION CONSTRAINT (NON-INFERENCE RULE):
+                The submitted evidence consists solely of UNSUPPORTED RENDERED TEXT scraped from a webpage.
+                According to strict contract security rules, unsupported rendered text CANNOT prove 2D visual frame pixels, cannot verify isolated audio tracks, and cannot verify author account ownership without authenticated platform metadata.
+                THEREFORE, YOU ARE STRICTLY FORBIDDEN FROM RETURNING 'RELEASE' OR 'SLASH'.
+                - If the rendered text mentions product "{p_name}" and CTA "{c_cta}" in "{r_lang}" while strictly avoiding blacklist words "{blacklist}": return 'PARTIAL'. This provisionally validates text compliance and enforces the 24-hour brand inspection window.
+                - If the rendered text lacks required product/CTA, contains blacklisted keywords, or lacks campaign binding: return 'REFUND'.
+                - If the page is 404, unreachable, or indecipherable: return 'ESCALATE'.
+
+                Campaign Criteria:
+                - Campaign ID: "{camp_id}"
+                - Registered Creator: "{creator_addr}" ({c_handle})
+                - Required Product: "{p_name}"
+                - Required CTA: "{c_cta}"
+                - Required Language: "{r_lang}"
+                - Brand Logo: "{b_logo}"
+                - Blacklist: "{blacklist}"
+
+                Rendered Webpage Text:
+                {content}
+
+                Return ONLY a valid JSON object:
+                {{"verdict": "PARTIAL|REFUND|ESCALATE", "confidence": 100, "reason": "concise explanation"}}
+                """
             try:
                 llm_res = gl.nondet.exec_prompt(prompt, response_format="json")
                 text_res = llm_res.content if hasattr(llm_res, "content") else str(llm_res)
@@ -345,6 +388,10 @@ class Contract(gl.Contract):
                 if int(parsed.get("confidence", 0)) < 65:
                     parsed["verdict"] = "ESCALATE"
                     parsed["reason"] = "[Low Confidence] " + str(parsed.get("reason", ""))
+                # Strict enforcement: if not structured evidence, RELEASE is forbidden
+                if not has_structured and str(parsed.get("verdict", "")).upper() == "RELEASE":
+                    parsed["verdict"] = "PARTIAL"
+                    parsed["reason"] = "[Unsupported Rendered Text: Capped at PARTIAL] " + str(parsed.get("reason", ""))
                 return parsed
             except Exception as e:
                  return {"verdict": "ESCALATE", "confidence": 0, "reason": f"LLM failure: {str(e)}"}
@@ -370,6 +417,10 @@ class Contract(gl.Contract):
             result = self._parse_llm_json(str(result))
 
         verdict = str(result.get("verdict", "ESCALATE")).upper()
+        # Double safety guard: raw rendered text cannot RELEASE
+        if not has_structured and verdict == "RELEASE":
+            verdict = "PARTIAL"
+
         reason = str(result.get("reason", "No reason provided"))
         try:
             conf = bigint(int(result.get("confidence", 0)))
@@ -394,6 +445,18 @@ class Contract(gl.Contract):
             raise UserError("Only the creator can appeal")
         if campaign.status != "ESCALATED":
             raise UserError("Campaign must be in ESCALATED state to appeal")
+
+        # Check for structured evidence in appeal explanation or original video_url
+        has_structured_appeal = False
+        for cand in [explanation.strip(), str(campaign.video_url).strip()]:
+            if cand.startswith("{") and cand.endswith("}"):
+                try:
+                    parsed = json.loads(cand)
+                    if isinstance(parsed, dict) and any(k in parsed for k in ["author_metadata", "captions", "visual_proof"]):
+                        has_structured_appeal = True
+                        break
+                except Exception:
+                    pass
 
         target_url = str(campaign.video_url)
         camp_id = str(campaign_id)
@@ -428,14 +491,14 @@ class Contract(gl.Contract):
             Creator Appeal Explanation:
             {appeal_text}
             
-            Authenticated Media Content & Transcript:
+            Media Evidence:
             {content}
             
             MANDATORY RULES:
             1. Verify Campaign ID "{camp_id}" and Creator "{creator_addr}" binding in evidence.
             2. Verify authentic transcript covers product "{p_name}" and CTA "{c_cta}" with zero blacklist words.
-            3. For visual logo compliance, verify authentic media cues/visual caption markers.
-            4. If independent structured subtitle tracks or oEmbed/JSON-LD author metadata are absent, DO NOT infer audio speech or visual frame pixels from HTML description text. Rule PARTIAL or REFUND.
+            3. Has Structured Evidence: {has_structured_appeal}
+            4. If structured evidence is missing or only raw rendered web text is available, DO NOT rule RELEASE. Narrow verdict to PARTIAL or REFUND.
             
             Return ONLY a JSON: {{"verdict": "RELEASE|PARTIAL|REFUND", "confidence": 100, "reason": "concise explanation"}}
             """
@@ -462,6 +525,10 @@ class Contract(gl.Contract):
         verdict = str(result.get("verdict", "REFUND")).upper()
         if verdict not in ["RELEASE", "PARTIAL", "REFUND"]:
             verdict = "REFUND"
+        
+        # Double safety: unsupported rendered text can never trigger RELEASE
+        if not has_structured_appeal and verdict == "RELEASE":
+            verdict = "PARTIAL"
             
         campaign.verdict = f"APPEAL_{verdict}"
         campaign.reason = str(result.get("reason", "No reason provided"))
@@ -539,7 +606,7 @@ class Contract(gl.Contract):
 
     @gl.public.write
     def dispute_verdict(self, campaign_id: str, dispute_reason: str) -> None:
-        """Allows Brand to dispute AI verdict during cooling-off window and trigger LLM Validator Consensus resolution"""
+        """Allows Brand to dispute AI verdict during cooling-off window and persist DISPUTED status on-chain"""
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
@@ -550,33 +617,40 @@ class Contract(gl.Contract):
             
         campaign.status = "DISPUTED"
         campaign.disputed_at = self._get_current_timestamp()
+        campaign.reason = f"Disputed by Brand: {dispute_reason}"
         self.campaigns[campaign_id] = campaign
-        
-        # Trigger trustless validator consensus resolution
-        self.resolve_dispute(campaign_id, dispute_reason)
 
     @gl.public.write
     def resolve_dispute(self, campaign_id: str, dispute_evidence: str) -> None:
         """
         Trustless Decentralized Dispute Resolution.
+        Requires campaign.status == "DISPUTED".
         SECURITY: Completely ownerless! Dispute outcome & stake slashing are determined 
-        100% by GenLayer Multi-Agent Validator Consensus (gl.vm.run_nondet) based on 
-        transcript/frame provenance and creator account authentication.
+        100% by GenLayer Multi-Agent Validator Consensus (gl.vm.run_nondet).
+        CRITICAL: Unsupported rendered text scraped from raw URLs CANNOT cause RELEASE or SLASH.
+        RELEASE or SLASH strictly require authenticated, structurally separated evidence.
         """
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
-        if campaign.status not in ["AWAITING_PAYOUT", "DISPUTED"]:
-            raise UserError("Campaign is not in AWAITING_PAYOUT or DISPUTED status")
+        if campaign.status != "DISPUTED":
+            raise UserError("Campaign is not in DISPUTED status")
             
         caller = str(gl.message.sender_address).lower()
         if caller != campaign.brand.lower() and caller != campaign.creator.lower():
             raise UserError("Unauthorized: Only brand or creator can execute dispute resolution")
 
-        campaign.status = "DISPUTED"
-        if campaign.disputed_at <= bigint(0):
-            campaign.disputed_at = self._get_current_timestamp()
-        self.campaigns[campaign_id] = campaign
+        # Check for authenticated, structurally separated evidence
+        has_structured = False
+        for candidate in [dispute_evidence.strip(), str(campaign.video_url).strip()]:
+            if candidate.startswith("{") and candidate.endswith("}"):
+                try:
+                    ev = json.loads(candidate)
+                    if isinstance(ev, dict) and any(k in ev for k in ["author_metadata", "captions", "visual_proof", "forensic_report"]):
+                        has_structured = True
+                        break
+                except Exception:
+                    pass
 
         target_url = str(campaign.video_url)
         camp_id = str(campaign_id)
@@ -613,26 +687,30 @@ class Contract(gl.Contract):
             Brand Dispute Reason & Alleged Fraud Evidence:
             {d_reason}
 
-            Authenticated Media Transcript & Metadata:
+            Media Evidence:
             {content}
 
+            STRUCTURAL EVIDENCE STATUS:
+            Has Authenticated, Structurally Separated Evidence: {has_structured}
+
             MANDATORY DISPUTE EVALUATION RULES:
-            1. PLATFORM & CREATOR AUTHENTICATION:
-               - Verify that media is hosted on an authentic platform (YouTube, TikTok, Instagram, X).
-               - Verify post belongs to creator account "{c_handle}" bound to "{creator_addr}".
-               - If spoofed platform host or unauthenticated account -> SLASH (stake slashed to brand for deliberate fraud).
+            1. CRITICAL EVIDENCE RESTRICTION:
+               - If Has Authenticated, Structurally Separated Evidence is FALSE:
+                 Unsupported plain rendered web text CANNOT determine funds via RELEASE or SLASH!
+                 Outcomes are STRICTLY NARROWED to REFUND or SPLIT.
+                 DO NOT rule RELEASE or SLASH under any circumstances when structured evidence is False.
+               - If Has Authenticated, Structurally Separated Evidence is TRUE:
+                 RELEASE: Unfounded dispute. Compliant content proven by authentic structured metadata, captions, and visual frame proof.
+                 SLASH: Malicious fraud proven by authentic evidence (e.g. spoofed creator account, forged credentials, deliberately fake media).
+                 REFUND: Dispute valid, requirements unmet, but no deliberate fraud.
+                 SPLIT: Shared fault or ambiguous structured evidence.
 
-            2. PROVENANCE & FRAUD ASSESSMENT:
-               - RELEASE: Dispute is unfounded. Transcript & frame provenance are authentic and compliant.
-               - REFUND: Dispute is valid. Content lacks required product/CTA or subtitles, but no deliberate malicious spoofing.
-               - SLASH: Confirmed malicious fraud, fake transcript, unauthenticated spoofed host, or fake evidence upload.
-               - SPLIT: Ambiguous evidence or partial compliance where fault is shared.
-
-            3. STRUCTURED METADATA REQUIREMENT:
-               - If independent structured subtitle tracks or oEmbed/JSON-LD author metadata are missing, DO NOT use HTML body text descriptions to infer provenance. Rule PARTIAL or ESCALATE/REFUND instead of RELEASE.
+            2. PLATFORM & CREATOR AUTHENTICATION:
+               - Account "{c_handle}" bound to "{creator_addr}".
+               - Fake/spoofed host or unauthenticated account with structured proof -> SLASH.
 
             Return ONLY a valid JSON object:
-            {{"verdict": "RELEASE|REFUND|SLASH|SPLIT", "confidence": 100, "reason": "concise explanation"}}
+            {{"verdict": "{"RELEASE|REFUND|SLASH|SPLIT" if has_structured else "REFUND|SPLIT"}", "confidence": 100, "reason": "concise explanation"}}
             """
             try:
                 llm_res = gl.nondet.exec_prompt(prompt, response_format="json")
@@ -658,6 +736,13 @@ class Contract(gl.Contract):
         reason = str(result.get("reason", "Dispute resolved by validator consensus"))
         if resolution_upper not in ["RELEASE", "REFUND", "SLASH", "SPLIT"]:
             resolution_upper = "REFUND"
+
+        # Double safety guard: unsupported rendered text CAN NEVER trigger RELEASE or SLASH
+        if not has_structured:
+            if resolution_upper == "RELEASE":
+                resolution_upper = "SPLIT"
+            elif resolution_upper == "SLASH":
+                resolution_upper = "REFUND"
 
         amount = campaign.escrow_amount
         stake = campaign.creator_stake

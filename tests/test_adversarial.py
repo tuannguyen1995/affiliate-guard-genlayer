@@ -162,12 +162,19 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
+        import json
+        structured_ev = json.dumps({
+            "author_metadata": {"handle": "@tiktok_creator_mom", "verified": True, "creator_address": str(self.creator_addr)},
+            "captions": {"transcript": "Legit review of children summer sandals, click the yellow shopping bag!", "language": "English"},
+            "visual_proof": {"logo_detected": True, "logo_name": "Cute Koala Logo", "frame_timestamp_ms": 1000}
+        })
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Legit review of children summer sandals, click the yellow shopping bag!")
         self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 98, "reason": "Passed all requirements"}')
 
         self.gl.message_raw = {"datetime": "2026-08-17T00:00:00+00:00"}
-        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals")
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals", structured_ev)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "AWAITING_PAYOUT")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "RELEASE")
 
         # Hacker calls finalize_payout -> Reverts
         self.gl.message.sender_address = self.hacker_addr
@@ -270,6 +277,12 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
+        import json
+        structured_ev = json.dumps({
+            "author_metadata": {"handle": "@tiktok_creator_mom", "verified": True, "creator_address": str(self.creator_addr)},
+            "captions": {"transcript": "Sandals review buy now!", "language": "English"},
+            "visual_proof": {"logo_detected": True, "logo_name": "Cute Koala Logo", "frame_timestamp_ms": 1000}
+        })
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review buy now!")
 
         eval_count = [0]
@@ -281,27 +294,40 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
                 return MagicMock(content='{"verdict": "RELEASE", "confidence": 95, "reason": "Validator: CTA and sandals verified."}')
 
         self.gl.nondet.exec_prompt = mock_exec_prompt
-        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_02")
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_02", structured_ev)
         self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "RELEASE")
 
     def test_05_brand_dispute_self_refund_exploit_prevented(self):
-        """Malicious Brand cannot self-refund or seize creator stake via resolve_dispute — outcome is governed by validator consensus"""
+        """Malicious Brand cannot self-refund or seize creator stake via resolve_dispute — outcome is governed by validator consensus.
+        Status is persisted as DISPUTED on-chain until explicit resolve_dispute call."""
+        import json
+        structured_ev = json.dumps({
+            "author_metadata": {"handle": "@tiktok_creator_mom", "verified": True, "creator_address": str(self.creator_addr)},
+            "captions": {"transcript": "Sandals review buy now!", "language": "English"},
+            "visual_proof": {"logo_detected": True, "logo_name": "Cute Koala Logo", "frame_timestamp_ms": 1000}
+        })
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review buy now!")
         self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 95, "reason": "Passed"}')
-        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_legit")
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals_legit", structured_ev)
+
+        # Brand disputes during cooling off window -> status persisted as DISPUTED
+        self.gl.message.sender_address = self.brand_addr
+        self.contract.dispute_verdict(self.campaign_id, "Unfounded dispute allegation")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "DISPUTED")
 
         # Third party hacker calls resolve_dispute -> Reverts
         self.gl.message.sender_address = self.hacker_addr
         with self.assertRaises(MockUserError):
             self.contract.resolve_dispute(self.campaign_id, "Alleging fake video")
 
-        # Brand calls dispute_verdict with dispute reason -> Validator consensus evaluates evidence and issues RELEASE
-        self.gl.message.sender_address = self.brand_addr
-        self.contract.dispute_verdict(self.campaign_id, "Unfounded dispute allegation")
+        # Legitimate resolution: Creator or Brand submits dispute evidence with structured proof
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 100, "reason": "Dispute unfounded, content authentic"}')
+        self.contract.resolve_dispute(self.campaign_id, structured_ev)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
         self.assertEqual(self.gl.transfers[0]["to"], self.creator_addr)
         self.assertEqual(self.gl.transfers[0]["value"], 1200)
@@ -329,35 +355,35 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
         self.assertEqual(self.gl.transfers[1]["value"], 200)  # Creator stake returned safely
 
     def test_07_stale_dispute_recovery_after_30_days(self):
-        """Unresolved disputes can be recovered after 30 days (50/50 split + stake refund)"""
+        """Unresolved disputes can be recovered after 30 days (50/50 split + stake refund) from genuine persisted DISPUTED state"""
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review")
-        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 100, "reason": "Passed"}')
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "PARTIAL", "confidence": 100, "reason": "Passed"}')
         self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/video")
 
         self.gl.message.sender_address = self.brand_addr
         self.gl.message_raw = {"datetime": "2026-08-17T00:00:00+00:00"}
-        # Execute dispute verdict (consensus returns REFUND or DISPUTED status)
-        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "REFUND", "confidence": 100, "reason": "Disputed"}')
+        # Execute dispute verdict -> Status is persisted on-chain as DISPUTED
         self.contract.dispute_verdict(self.campaign_id, "Disputing content compliance")
-
-        # Manually set status back to DISPUTED for stale recovery testing
-        self.contract.campaigns[self.campaign_id].status = "DISPUTED"
-        self.contract.campaigns[self.campaign_id].disputed_at = self.contract._get_current_timestamp()
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "DISPUTED")
 
         # Attempt recovery after 10 days -> Reverts
         self.gl.message_raw = {"datetime": "2026-08-27T00:00:00+00:00"}
         with self.assertRaises(MockUserError):
             self.contract.recover_stale_dispute(self.campaign_id)
 
-        # Attempt recovery after 31 days -> Succeeds
+        # Attempt recovery after 31 days -> Succeeds (50% escrow to brand, 50% escrow + stake to creator)
         self.gl.message_raw = {"datetime": "2026-09-18T00:00:00+00:00"}
         self.contract.recover_stale_dispute(self.campaign_id)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
-        self.assertEqual(len(self.gl.transfers), 4) # 2 from dispute REFUND (1000 brand, 200 creator), plus 2 from stale recovery
+        self.assertEqual(len(self.gl.transfers), 2)
+        self.assertEqual(self.gl.transfers[0]["to"], self.creator_addr)
+        self.assertEqual(self.gl.transfers[0]["value"], 700) # 500 (half escrow) + 200 (creator stake)
+        self.assertEqual(self.gl.transfers[1]["to"], self.brand_addr)
+        self.assertEqual(self.gl.transfers[1]["value"], 500) # 500 (half escrow)
 
     def test_08_unbound_submission_replay_attack_rejected(self):
         """Attacker submits a viral third-party video without campaign ID / creator binding -> Rejected"""
@@ -397,21 +423,56 @@ class TestAffiliateGuardAdversarialSuite(unittest.TestCase):
             self.contract.submit_video(self.campaign_id, "https://my-scam-pastebin.com/fake_video.html")
 
     def test_11_validator_consensus_authorized_stake_slashing_on_confirmed_fraud(self):
-        """Stake slashing is governed 100% by validator consensus on confirmed malicious fraud"""
+        """Stake slashing is governed 100% by validator consensus on confirmed malicious fraud with authenticated structured evidence"""
+        import json
+        structured_fraud_proof = json.dumps({
+            "author_metadata": {"handle": "@imposter_account", "verified": False, "creator_address": "0xmalicious_imposter"},
+            "captions": {"transcript": "Stolen footage", "language": "English"},
+            "visual_proof": {"logo_detected": False},
+            "forensic_report": {"malicious_spoof": True, "forged_metadata": True}
+        })
         self.gl.message.sender_address = self.creator_addr
         self.gl.message.value = self.min_stake
         self.contract.accept_campaign(self.campaign_id)
 
         self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review")
-        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "RELEASE", "confidence": 95, "reason": "Passed"}')
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "PARTIAL", "confidence": 95, "reason": "Passed"}')
         self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals")
 
-        # Brand opens dispute alleging fraud, consensus returns SLASH
-        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "SLASH", "confidence": 100, "reason": "Confirmed fake evidence upload"}')
+        # Brand opens dispute alleging fraud -> DISPUTED
         self.gl.message.sender_address = self.brand_addr
         self.contract.dispute_verdict(self.campaign_id, "Proven fake video upload")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "DISPUTED")
+
+        # Brand executes resolve_dispute with structured forensic fraud proof -> consensus returns SLASH
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "SLASH", "confidence": 100, "reason": "Confirmed fake evidence upload with forged metadata"}')
+        self.contract.resolve_dispute(self.campaign_id, structured_fraud_proof)
         self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
         self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "DISPUTE_SLASH")
+        self.assertEqual(len(self.gl.transfers), 1)
+        self.assertEqual(self.gl.transfers[0]["to"], self.brand_addr)
+        self.assertEqual(self.gl.transfers[0]["value"], 1200) # Brand receives escrow (1000) + slashed creator stake (200)
+
+    def test_12_unsupported_rendered_text_cannot_slash_or_release_in_dispute(self):
+        """CRITICAL: Unsupported rendered text passed to resolve_dispute CANNOT cause RELEASE or SLASH; narrowed to SPLIT or REFUND"""
+        self.gl.message.sender_address = self.creator_addr
+        self.gl.message.value = self.min_stake
+        self.contract.accept_campaign(self.campaign_id)
+
+        self.gl.nondet.web.render = lambda url, mode="text": MagicMock(content="Sandals review")
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "PARTIAL", "confidence": 95, "reason": "Passed"}')
+        self.contract.submit_video(self.campaign_id, "https://tiktok.com/@creator/sandals")
+
+        # Brand disputes
+        self.gl.message.sender_address = self.brand_addr
+        self.contract.dispute_verdict(self.campaign_id, "Plain text dispute claim")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "DISPUTED")
+
+        # If LLM attempts to output SLASH on plain unstructured text, contract double-safety strictly narrows to REFUND
+        self.gl.nondet.exec_prompt = lambda prompt, response_format="json": MagicMock(content='{"verdict": "SLASH", "confidence": 100, "reason": "Alleged fraud on plain text"}')
+        self.contract.resolve_dispute(self.campaign_id, "Plain unstructured dispute text without structured metadata")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].status, "CLOSED")
+        self.assertEqual(self.contract.campaigns[self.campaign_id].verdict, "DISPUTE_REFUND")
 
 
 if __name__ == "__main__":

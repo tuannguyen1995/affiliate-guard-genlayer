@@ -66,6 +66,7 @@ function App() {
   // Action States
   const [videoUrl, setVideoUrl] = useState('');
   const [appealText, setAppealText] = useState('');
+  const [disputeEvidence, setDisputeEvidence] = useState('');
   const [registerHandleInput, setRegisterHandleInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
@@ -242,21 +243,48 @@ function App() {
     }
   };
 
-  const resolveDispute = async (resolution: string) => {
+  const disputeVerdict = async () => {
+    if (!client || !CONTRACT_ADDRESS) return;
+    const reason = prompt("Enter dispute reason / allegation for non-compliance:") || "Brand disputed AI verdict for non-compliance";
+    setIsSubmitting(true);
+    setLoadingMsg('Freezing escrow funds and persisting DISPUTED status on-chain...');
+    try {
+      const txHash = await callWithRetry(() => client.writeContract({
+        address: CONTRACT_ADDRESS,
+        account: { address: account as any },
+        functionName: 'dispute_verdict',
+        args: [campaignId, reason]
+      }));
+      setLoadingMsg('Waiting for DISPUTED state confirmation on GenLayer...');
+      await client.waitForTransactionReceipt({ hash: txHash });
+      fetchCampaign(campaignId);
+      setSuccessMsg('Verdict disputed! Campaign status is now DISPUTED.');
+    } catch (error: any) {
+      console.error(error);
+      alert('Dispute failed: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+      setLoadingMsg('');
+    }
+  };
+
+  const handleResolveDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!client || !CONTRACT_ADDRESS) return;
     setIsSubmitting(true);
-    setLoadingMsg(`Resolving dispute as ${resolution}...`);
+    setLoadingMsg('Submitting evidence to GenLayer Multi-Agent Validator Consensus Arbitrator...');
     try {
       const txHash = await callWithRetry(() => client.writeContract({
         address: CONTRACT_ADDRESS,
         account: { address: account as any },
         functionName: 'resolve_dispute',
-        args: [campaignId, resolution]
+        args: [campaignId, disputeEvidence.trim()]
       }));
-      setLoadingMsg('Finalizing dispute resolution on-chain...');
+      setLoadingMsg('Validators resolving dispute via consensus...');
       await client.waitForTransactionReceipt({ hash: txHash });
       fetchCampaign(campaignId);
-      setSuccessMsg(`Dispute resolved as ${resolution}.`);
+      setSuccessMsg('Dispute resolved by GenLayer Multi-Agent Validator Consensus!');
+      setDisputeEvidence('');
     } catch (error: any) {
       console.error(error);
       alert('Dispute resolution failed: ' + error.message);
@@ -266,24 +294,24 @@ function App() {
     }
   };
 
-  const disputeVerdict = async () => {
+  const recoverStaleDispute = async () => {
     if (!client || !CONTRACT_ADDRESS) return;
     setIsSubmitting(true);
-    setLoadingMsg('Disputing AI verdict and triggering Validator Consensus...');
+    setLoadingMsg('Executing 30-day stale dispute recovery...');
     try {
       const txHash = await callWithRetry(() => client.writeContract({
         address: CONTRACT_ADDRESS,
         account: { address: account as any },
-        functionName: 'dispute_verdict',
-        args: [campaignId, 'Brand disputed AI verdict for non-compliance']
+        functionName: 'recover_stale_dispute',
+        args: [campaignId]
       }));
-      setLoadingMsg('Freezing escrow funds and executing Validator Consensus resolution...');
+      setLoadingMsg('Finalizing 50/50 escrow split and creator stake return...');
       await client.waitForTransactionReceipt({ hash: txHash });
       fetchCampaign(campaignId);
-      setSuccessMsg('Verdict disputed. Awaiting DAO/Admin review.');
+      setSuccessMsg('Stale dispute recovered! 50/50 split and creator stake returned.');
     } catch (error: any) {
       console.error(error);
-      alert('Dispute failed: ' + error.message);
+      alert('Stale dispute recovery failed: ' + error.message);
     } finally {
       setIsSubmitting(false);
       setLoadingMsg('');
@@ -1164,17 +1192,43 @@ function App() {
 
                     {campaignData.status === 'DISPUTED' && (
                       <div className="alert alert-warning" style={{ marginTop: '1.5rem' }}>
-                        <strong style={{ display: 'block', marginBottom: '0.5rem' }}>⚖️ Disputed Escrow</strong>
-                        <p>The Brand has disputed the AI verdict. The authorized arbitrator or brand can resolve the dispute:</p>
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                          <button onClick={() => resolveDispute('RELEASE')} disabled={isSubmitting} className="btn-primary" style={{ flex: 1, fontSize: '0.8rem' }}>
-                            Award Creator
-                          </button>
-                          <button onClick={() => resolveDispute('SPLIT')} disabled={isSubmitting} className="btn-secondary" style={{ flex: 1, fontSize: '0.8rem' }}>
-                            Split 50/50
-                          </button>
-                          <button onClick={() => resolveDispute('REFUND')} disabled={isSubmitting} className="btn-secondary" style={{ flex: 1, fontSize: '0.8rem', color: 'var(--status-escalated)' }}>
-                            Refund Brand
+                        <strong style={{ display: 'block', marginBottom: '0.5rem', fontSize: '1rem' }}>⚖️ Active Dispute Under Review</strong>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: '1.5' }}>
+                          This campaign is persisted in <strong>DISPUTED</strong> status. Escrow funds and creator stake are frozen on-chain.
+                          Dispute resolution is executed trustlessly by GenLayer Multi-Agent Validator Consensus.
+                        </p>
+
+                        {(account && (account.toLowerCase() === campaignData.brand?.toLowerCase() || account.toLowerCase() === campaignData.creator?.toLowerCase())) && (
+                          <form onSubmit={handleResolveDispute} style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>
+                              Submit Authenticated Dispute Evidence / Structured Proof:
+                            </label>
+                            <textarea
+                              placeholder='Provide forensic proof or structured JSON (e.g. {"author_metadata": ..., "captions": ..., "visual_proof": ...})'
+                              value={disputeEvidence}
+                              onChange={e => setDisputeEvidence(e.target.value)}
+                              required
+                              disabled={isSubmitting}
+                              style={{ width: '100%', minHeight: '80px', marginBottom: '0.75rem', fontSize: '0.85rem' }}
+                            />
+                            <button type="submit" className="btn-primary full-width" disabled={isSubmitting}>
+                              Submit to Validator Consensus Arbitrator
+                            </button>
+                          </form>
+                        )}
+
+                        <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                            🕒 <strong>Stale Dispute Safety Recovery</strong>: If this dispute remains unresolved after 30 days, participants can recover funds (50/50 escrow split and creator stake return).
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={recoverStaleDispute} 
+                            disabled={isSubmitting} 
+                            className="btn-secondary full-width" 
+                            style={{ fontSize: '0.85rem', color: 'var(--status-escalated)' }}
+                          >
+                            Execute 30-Day Stale Recovery
                           </button>
                         </div>
                       </div>
