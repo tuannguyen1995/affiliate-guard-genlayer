@@ -4,8 +4,8 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform powered by
 
 ## 🚀 Live Links & Verification
 - **Production dApp:** [https://affiliateguard.vercel.app](https://affiliateguard.vercel.app)
-- **Deployed Contract Address:** `0x4c79bC7e88642625f677AFDc6d593048875065C5`
-- **GenLayer Studio Explorer:** [https://explorer-studio.genlayer.com/address/0x4c79bC7e88642625f677AFDc6d593048875065C5](https://explorer-studio.genlayer.com/address/0x4c79bC7e88642625f677AFDc6d593048875065C5)
+- **Deployed Contract Address:** `0x37F4206F9b910c06F517A258D28dCf744C0dfb3e`
+- **GenLayer Studio Explorer:** [https://studio.genlayer.com/explorer/contract/0x37F4206F9b910c06F517A258D28dCf744C0dfb3e](https://studio.genlayer.com/explorer/contract/0x37F4206F9b910c06F517A258D28dCf744C0dfb3e)
 - **Network:** GenLayer Studio Network (`studionet`, Chain ID: `61999` / `0xF1EF`)
 - **JSON-RPC Endpoint:** `https://studio.genlayer.com/api`
 

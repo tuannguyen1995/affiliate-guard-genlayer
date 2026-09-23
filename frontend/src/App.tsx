@@ -12,7 +12,7 @@ declare global {
 
 const CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;
 const RPC_URL = studionet.rpcUrls.default.http[0];
-const CONTRACT_ADDRESS = '0x4c79bC7e88642625f677AFDc6d593048875065C5';
+const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS as string) || '0x37F4206F9b910c06F517A258D28dCf744C0dfb3e';
 
 async function callWithRetry<T>(
   fn: () => Promise<T>, 

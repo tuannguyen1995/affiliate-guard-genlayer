@@ -22,6 +22,10 @@ All notable changes to the AffiliateGuard project are documented in this file in
 - **Dedicated Test Suite (`tests/test_reputation.py`)**:
   - 5 comprehensive unit tests verifying Gold tier qualification, Bronze tier penalties, dynamic stake calculation, and automatic reputation scoring upon payout/slashing.
 
+- **Live Studionet Deployment**:
+  - Successfully deployed to GenLayer Studio Network (`studionet`, Chain ID `61999`) at address `0x37F4206F9b910c06F517A258D28dCf744C0dfb3e`.
+  - Verified on GenLayer Studio Explorer with full ABI and state inspectability.
+
 ### Improved
 - Expanded test suite from 24 to 29 passing unit tests (100% pass rate in 0.27s).
 - Line 1 pragma in `contracts/contract.py` unified to official `{ "Depends": "py-genlayer:..." }` magic comment for seamless GenLayer Studio compilation.
