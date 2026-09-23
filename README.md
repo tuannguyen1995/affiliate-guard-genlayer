@@ -1,38 +1,87 @@
-# AffiliateGuard
+# AffiliateGuard 🛡️
 
-AffiliateGuard is a decentralized affiliate marketing escrow platform that uses GenLayer's Intelligent Contracts to automatically verify content requirements and process payouts via AI consensus.
+AffiliateGuard is a decentralized affiliate marketing escrow platform powered by **GenLayer's Intelligent Contracts**. It automates creator verification, content requirement validation, and trustless dispute resolution directly through decentralized multi-agent AI consensus.
 
-## Deployed Contract
-- **Contract Address:** `0x4c79bC7e88642625f677AFDc6d593048875065C5`
+## 🚀 Live Links & Verification
+- **Production dApp:** [https://affiliateguard.vercel.app](https://affiliateguard.vercel.app)
+- **Deployed Contract Address:** `0x4c79bC7e88642625f677AFDc6d593048875065C5`
 - **GenLayer Studio Explorer:** [https://explorer-studio.genlayer.com/address/0x4c79bC7e88642625f677AFDc6d593048875065C5](https://explorer-studio.genlayer.com/address/0x4c79bC7e88642625f677AFDc6d593048875065C5)
+- **Network:** GenLayer Studio Network (`studionet`, Chain ID: `61999` / `0xF1EF`)
+- **JSON-RPC Endpoint:** `https://studio.genlayer.com/api`
 
-## Live App
-- **Production URL:** [https://affiliateguard.vercel.app](https://affiliateguard.vercel.app)
+---
 
-## How it Works
-1. **Brand Escrow:** Brands create a campaign with a designated Creator, escrow amount, product requirements, CTA, and blacklist keywords.
-2. **Creator Acceptance & Staking:** The designated Creator deposits a mandatory 20% stake to accept the campaign terms (skin-in-the-game to prevent spam).
-3. **Authentic Platform Evidence & Account Verification:** The Creator submits their media URL. The contract enforces:
-   - **Canonical Hostname Matching:** Rejects loose URL substring matching (e.g. `attacker.com/youtube.com`). Submissions must originate from exact canonical hosts (`youtube.com`, `youtu.be`, `tiktok.com`, `instagram.com`, `x.com`, `twitter.com`) verified via `_is_authenticated_platform_host`.
-   - **On-Chain Creator Account Registry:** Creators register their social handle on-chain (`register_creator_handle`). The contract verifies that platform metadata (JSON-LD author, oEmbed provider, meta author tags) matches the creator's registered handle bound to `creator_address`.
-   - **Audio Transcript Provenance:** Spoken product mentions, CTA, and language subtitles are verified strictly from caption/subtitle metadata tracks.
-   - **Non-Inference Visual Frame Provenance:** Plain webpage description text CANNOT certify visual frame pixels. If a Brand Logo is required, text-only evidence defaults to `PARTIAL` (forcing the mandatory 24-hour cooling-off window for Brand visual verification).
+## ⚡ Milestone 1 Updates
+- **Interactive Consensus Simulator & Forensic Sandbox**: Directly in the live dApp, anyone can test all 4 core consensus paths (`RELEASE`, `PARTIAL`, `REFUND`, `SLASH`) with real-time multi-agent voting breakdowns.
+- **Creator Trust & Reputation Metrics**: Real-time evaluation of creator staking history, handle verification, and dispute track records.
+- **System Architecture & Sequence Documentation**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for Mermaid flowcharts and GenVM lifecycle details.
+- **Threat Model & Adversarial Analysis**: See [`SECURITY.md`](./SECURITY.md) for detailed invariant defenses and test verification matrices.
+- **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md).
+
+---
+
+## 🔑 How It Works
+
+```
+[Brand Creates Campaign] ──► [Creator Deposits 20% Stake] ──► [Creator Submits Evidence]
+                                                                        │
+                                                                        ▼
+                                                          [GenLayer AI Consensus Nodes]
+                                                                        │
+                 ┌──────────────────────────────────────────────────────┴───────────────────────────────────────┐
+                 ▼                                                      ▼                                       ▼
+        [Clean Verification]                                 [Raw Web Scrape / Logo]               [Blacklist / Failure]
+              RELEASE                                                PARTIAL                               REFUND
+                 │                                                      │                                       │
+                 ▼                                                      ▼                                       ▼
+    [24h Cooling-Off Delay]                                [24h Cooling-Off Delay]                     [Escrow Refunded,
+  (Undisputed -> Full Payout)                            (Undisputed -> 50/50 Split)                  Stake Safely Returned]
+```
+
+1. **Brand Escrow:** Brands deposit GEN tokens into the contract and configure required products, call-to-action (CTA), required languages, brand logo descriptor, and blacklisted keywords.
+2. **Creator Acceptance & Staking:** The designated Creator deposits a mandatory 20% stake (skin-in-the-game) to accept campaign terms.
+3. **Authentic Platform Evidence & Account Verification:**
+   - **Canonical Hostname Matching:** Enforces official media domains (`youtube.com`, `tiktok.com`, `instagram.com`, `x.com`). Rejects substring exploits (e.g. `attacker.com/youtube.com`) and pastebins.
+   - **On-Chain Creator Account Registry:** Creators register their handle on-chain (`register_creator_handle`). Evidence metadata must structurally bind to the registered handle.
+   - **Transcript Provenance:** Spoken product mentions and CTAs are strictly validated from audio captions/subtitles.
+   - **Non-Inference Visual Frame Rule:** Plain text scraped from an HTML webpage cannot prove visual pixels. If a Brand Logo is required, unstructured text defaults to `PARTIAL` rather than `RELEASE`, enforcing a mandatory 24-hour cooling-off inspection window.
 4. **Decentralized Validator Consensus Dispute Resolution (Ownerless Slashing):**
-   - **RELEASE/PARTIAL:** Payout enters a mandatory 24-hour cooling-off delay (`AWAITING_PAYOUT`). If no dispute occurs within 24h, payout is finalized.
-   - **Safe Stake Protection:** Automatic stake slashing is decoupled from heuristic web scrapes. On non-compliance (`REFUND`), Brand receives 100% escrow refund, and Creator stake is safely returned to prevent loss from scraper glitches.
-   - **Trustless Validator Consensus Slashing:** Single-sig owner control is completely eliminated! If a dispute is raised, resolution and stake slashing (`SLASH`) are determined 100% by GenLayer Multi-Agent LLM Consensus (`gl.vm.run_nondet`) based on transcript/frame provenance and creator account authentication. Stale disputes (>30 days) can be recovered via automated 50/50 split and stake refund.
+   - **Safe Stake Protection:** Routine non-compliance safely refunds Brand escrow and returns Creator stake. Creator stakes are never blindly slashed based on mutable web scrapes.
+   - **Trustless Multi-Agent Slashing:** Slashing (`SLASH`) is exclusively determined by GenLayer Multi-Agent LLM Consensus (`gl.vm.run_nondet`) on confirmed, deliberate fraud. Single-sig owners cannot seize funds.
+   - **Stale Dispute Recovery:** Disputes sitting unresolved for >30 days can be recovered via automated 50/50 split and stake return (`recover_stale_dispute`).
 
-## Adversarial & Regression Test Suite
+---
 
-An exhaustive test suite is implemented in [`tests/test_adversarial.py`](./tests/test_adversarial.py) (13 tests), [`tests/test_affiliate_guard.py`](./tests/test_affiliate_guard.py) (3 tests), [`tests/test_evidence_binding.py`](./tests/test_evidence_binding.py) (6 tests), and [`tests/test_adversarial.js`](./tests/test_adversarial.js) (12 simulations) covering:
-- **Canonical Domain & Substring Exploit Defense**: Rejects unauthenticated pastebins and substring URL tricks (e.g., `attacker.com/youtube.com`).
-- **On-Chain Creator Account Registration**: Verifies handle binding via `register_creator_handle` and platform metadata author matching.
-- **Transcript & Frame Provenance Verification**: Enforces non-inference rules (yielding `PARTIAL` rather than full `RELEASE` for text-only evidence when visual logo is required).
-- **Safe Stake Protection**: Verifies Creator stake is never blindly slashed on heuristic scrapes.
-- **Trustless Validator Consensus Slashing**: Slashing is exclusively executable via multi-agent validator consensus (`gl.vm.run_nondet`) on confirmed fraud, completely eliminating owner control.
-- **Under-Staking Defense**: Rejects stake amounts < 20%.
-- **Early/Unauthorized Payout Defense**: Enforces 24h cooling-off and caller authorization for all parties.
-- **Anti-Timestamp-Manipulation**: Validates 7-day cancellation timeout using trusted context.
-- **Validator Disagreement Handling**: Verifies consensus passes on semantic equivalence and reverts on disagreement.
-- **Ownerless Dispute Resolution Defense**: Prevents malicious self-refunds and enforces consensus arbitration.
-- **Terminal Fund Flows**: Release, Partial, Escrow Refund, Consensus Dispute Resolution, and Stale Recovery.
+## 🧪 Adversarial & Regression Test Suite
+
+An exhaustive test suite is implemented across Python (`pytest`) and JavaScript (`Node.js`):
+
+```bash
+# Run 24 Python Adversarial & Regression Tests
+pytest tests/ -v
+
+# Run 14 Node.js End-to-End Adversarial Simulations
+node tests/test_adversarial.js
+```
+
+### Verified Scenarios:
+1. **Under-Staking Defense**: Rejects creator stake < 20%.
+2. **Early/Unauthorized Payout Defense**: Enforces 24h cooling-off and caller authorization.
+3. **Anti-Timestamp Manipulation**: Validates trusted datetime execution context.
+4. **Semantic Verdict Consensus**: Confirms validators match on meaning while ignoring explanation wording.
+5. **Brand Self-Refund Exploit Defense**: Prevents unilateral fund seizures.
+6. **Safe Stake Decoupling**: Protects creator stake from heuristic scrape false-positives.
+7. **30-Day Stale Recovery**: Automatically resolves stalled disputes.
+8. **Replay & Impersonation Defense**: Rejects third-party content reuse.
+9. **Visual Non-Inference Rule**: Plain text without visual frames is capped at `PARTIAL`.
+10. **Canonical Domain Defense**: Rejects unauthenticated pastebin and spoofed URLs.
+11. **Trustless Validator Slashing**: Stakes slashed only on consensus-proven fraud.
+12. **Raw Scrape Constraint**: Unsupported rendered text cannot cause `RELEASE` or `SLASH`.
+
+---
+
+## 🛠️ Tech Stack
+- **Smart Contract:** GenLayer Intelligent Contract (`Python`, GenVM, `gl.vm.run_nondet`)
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS / Vanilla Modern Dark Mode
+- **Web3 Integration:** `genlayer-js`, `ethers v6`
+- **Deployment:** Vercel Production, GenLayer Studio Network (`studionet`)

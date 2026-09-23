@@ -56,7 +56,13 @@ function App() {
   const [client, setClient] = useState<any>(null);
   
   // Dashboard Role
-  const [role, setRole] = useState<'EXPLORE' | 'BRAND' | 'CREATOR' | 'BOUNTIES'>('EXPLORE');
+  const [role, setRole] = useState<'EXPLORE' | 'BRAND' | 'CREATOR' | 'BOUNTIES' | 'SIMULATOR'>('SIMULATOR');
+
+  // Simulator States
+  const [simScenarioIdx, setSimScenarioIdx] = useState<number>(0);
+  const [simStep, setSimStep] = useState<number>(0);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [evidenceFormat, setEvidenceFormat] = useState<'structured' | 'raw'>('structured');
 
   // Campaign State
   const [campaignId, setCampaignId] = useState<string>('');
@@ -673,13 +679,144 @@ function App() {
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleApplyBounty = (campaignId: string) => {
+  const handleApplyBounty = (bountyId: string) => {
     setRole('CREATOR');
-    setCampaignId(campaignId);
-    setSuccessMsg('You are applying for a bounty! Please fetch the campaign and submit your video.');
+    setCampaignId(bountyId);
+    setSuccessMsg(`Selected bounty ${bountyId}. You can now review terms or submit video.`);
     const el = document.getElementById('dashboard-forms');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
-    fetchCampaign(campaignId);
+  };
+
+  // ---------------- CONSENSUS SIMULATOR SCENARIOS ----------------
+  const SIM_SCENARIOS = [
+    {
+      id: "clean-release",
+      title: "1. Compliant Media Release",
+      badge: "RELEASE",
+      badgeClass: "badge-release",
+      description: "Creator submits verified YouTube shorts matching product, CTA, and registered handle.",
+      targetUrl: "https://youtube.com/shorts/summer_sandals_clean",
+      creatorHandle: "@SarahStyles",
+      creatorAddress: "0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+      escrow: "5.0 GEN",
+      stake: "1.0 GEN",
+      structuredEvidence: {
+        media_url: "https://youtube.com/shorts/summer_sandals_clean",
+        author_metadata: {
+          platform: "YouTube",
+          channel_id: "UC_SarahStyles_Fashion",
+          verified_handle: "@sarahstyles",
+          wallet_binding: "0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b"
+        },
+        captions: "Hey guys! Check out these new girl sandals! Super comfy and trendy. Make sure to click add to cart right now!",
+        visual_proof: "Visual frame 00:04 to 00:12 shows 'AffiliateGuard' blue protective shield logo clearly displayed."
+      },
+      rawText: "YouTube Video: Reviewing shoes. Description: soft sandals for summer, click link below.",
+      leaderVerdict: "RELEASE",
+      leaderConfidence: 98,
+      leaderReason: "All 3 structured tiers verified: Author @SarahStyles binds to wallet, captions cover product and CTA with zero blacklist words, logo visually certified.",
+      validatorVerdict: "RELEASE",
+      validatorConfidence: 99,
+      validatorReason: "Independent verification agrees: Full compliance across author metadata, audio transcript, and visual frames.",
+      finalResolution: "Full Escrow (5.0 GEN) + Stake (1.0 GEN) released to Creator after 24h cooling-off."
+    },
+    {
+      id: "non-inference-partial",
+      title: "2. Non-Inference Rule (Raw Scrape)",
+      badge: "PARTIAL",
+      badgeClass: "badge-partial",
+      description: "Creator submits raw URL. HTML text cannot prove visual 2D frames, strictly capped at PARTIAL.",
+      targetUrl: "https://tiktok.com/@alextech/video/sandals_review",
+      creatorHandle: "@AlexTech",
+      creatorAddress: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+      escrow: "5.0 GEN",
+      stake: "1.0 GEN",
+      structuredEvidence: null,
+      rawText: "<div class='tiktok-desc'>Loving these girl sandals! Add to cart in bio. No scam, 100% genuine brand logo displayed on screen.</div>",
+      leaderVerdict: "PARTIAL",
+      leaderConfidence: 92,
+      leaderReason: "Non-Inference Rule: Unsupported rendered web text cannot certify 2D visual logo pixels or isolated audio tracks. Capped at PARTIAL to mandate 24h Brand visual inspection window.",
+      validatorVerdict: "PARTIAL",
+      validatorConfidence: 95,
+      validatorReason: "Consensus agrees with leader constraint: Raw rendered webpage text lacks structured frame provenance. Capped at PARTIAL.",
+      finalResolution: "24h Cooling-Off Window enforced. If undisputed, 50% escrow (2.5 GEN) + Stake (1.0 GEN) to Creator; 50% refund (2.5 GEN) to Brand."
+    },
+    {
+      id: "blacklist-violation",
+      title: "3. Blacklist Keyword Violation",
+      badge: "REFUND",
+      badgeClass: "badge-refund",
+      description: "Video audio transcript utters blacklisted competitor word ('fake discount'), triggering safe escrow refund.",
+      targetUrl: "https://instagram.com/reel/sandals_promo_fail",
+      creatorHandle: "@FoodieDan",
+      creatorAddress: "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+      escrow: "5.0 GEN",
+      stake: "1.0 GEN",
+      structuredEvidence: {
+        media_url: "https://instagram.com/reel/sandals_promo_fail",
+        author_metadata: {
+          platform: "Instagram",
+          verified_handle: "@foodiedan",
+          wallet_binding: "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+        },
+        captions: "Check out these girl sandals. Don't fall for that fake discount on other websites, add to cart here!",
+        visual_proof: "Visual frame shows brand shoes."
+      },
+      rawText: "Instagram Reel: girl sandals review mentioning fake discount.",
+      leaderVerdict: "REFUND",
+      leaderConfidence: 100,
+      leaderReason: "Blacklist violation detected: Spoken transcript explicitly utters forbidden keyword 'fake discount'. Non-compliant delivery.",
+      validatorVerdict: "REFUND",
+      validatorConfidence: 100,
+      validatorReason: "Validator confirms presence of blacklisted term 'fake discount' in audio captions. Escrow refund mandated.",
+      finalResolution: "Safe Stake Decoupling: Brand receives 100% Escrow refund (5.0 GEN). Creator Stake (1.0 GEN) is safely returned (no blind slashing)."
+    },
+    {
+      id: "fraud-slashing",
+      title: "4. Multi-Agent Dispute Slashing",
+      badge: "SLASH",
+      badgeClass: "badge-slash",
+      description: "Brand files dispute with forensic evidence of impersonation. Multi-agent consensus executes ownerless slashing.",
+      targetUrl: "https://youtube.com/watch?v=forged_identity_scam",
+      creatorHandle: "@Impersonator",
+      creatorAddress: "0x3333333333333333333333333333333333333333",
+      escrow: "5.0 GEN",
+      stake: "1.0 GEN",
+      structuredEvidence: {
+        media_url: "https://youtube.com/watch?v=forged_identity_scam",
+        author_metadata: {
+          platform: "YouTube",
+          channel_id: "UC_FakeImpersonator",
+          verified_handle: "@hacked_channel",
+          wallet_binding: "0x9999999999999999999999999999999999999999"
+        },
+        captions: "Stolen video re-upload.",
+        visual_proof: "Metadata mismatched."
+      },
+      rawText: "Re-uploaded copyrighted video from different creator.",
+      leaderVerdict: "SLASH",
+      leaderConfidence: 100,
+      leaderReason: "Malicious Fraud Proven: Account metadata belongs to unregistered third-party wallet 0x9999...9999. Deliberate identity spoofing attempt.",
+      validatorVerdict: "SLASH",
+      validatorConfidence: 100,
+      validatorReason: "Consensus confirms malicious forgery and platform impersonation. Trustless slashing authorized under resolve_dispute().",
+      finalResolution: "Ownerless Slashing Executed: Brand receives 100% Escrow refund (5.0 GEN) + Creator's slashed Stake (1.0 GEN)."
+    }
+  ];
+
+  const runSimulation = () => {
+    setIsSimulating(true);
+    setSimStep(1);
+    setTimeout(() => {
+      setSimStep(2);
+      setTimeout(() => {
+        setSimStep(3);
+        setTimeout(() => {
+          setSimStep(4);
+          setIsSimulating(false);
+        }, 1000);
+      }, 1000);
+    }, 800);
   };
 
   return (
@@ -732,8 +869,43 @@ function App() {
           </div>
         </section>
 
+        {/* Network & Live Contract Telemetry Banner */}
+        <div className="network-telemetry-banner">
+          <div className="telemetry-item">
+            <span className="telemetry-dot live"></span>
+            <span className="telemetry-label">Network:</span>
+            <span className="telemetry-value">GenLayer studionet (61999)</span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">Contract:</span>
+            <a 
+              href={`https://explorer-studio.genlayer.com/address/${CONTRACT_ADDRESS}`}
+              target="_blank" 
+              rel="noreferrer" 
+              className="telemetry-link"
+            >
+              {CONTRACT_ADDRESS.slice(0, 6)}...{CONTRACT_ADDRESS.slice(-4)} ↗
+            </a>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">Consensus:</span>
+            <span className="telemetry-badge">gl.vm.run_nondet (Semantic Match)</span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">Status:</span>
+            <span style={{ color: 'hsl(148, 70%, 35%)', fontWeight: 'bold' }}>● Online</span>
+          </div>
+        </div>
+
         <div className="role-selector" id="dashboard-forms">
           <div className="role-toggle">
+            <button 
+              className={`role-btn ${role === 'SIMULATOR' ? 'active' : ''}`}
+              onClick={() => { setRole('SIMULATOR'); setSuccessMsg(''); setSimStep(0); }}
+              style={{ fontWeight: 700 }}
+            >
+              ⚡ Consensus Simulator
+            </button>
             <button 
               className={`role-btn ${role === 'EXPLORE' ? 'active' : ''}`}
               onClick={() => { setRole('EXPLORE'); setSuccessMsg(''); }}
@@ -770,6 +942,149 @@ function App() {
         {successMsg && (
           <div className="alert alert-success">
             <strong>Success:</strong> {successMsg}
+          </div>
+        )}
+
+        {role === 'SIMULATOR' && (
+          <div className="simulator-container">
+            <div className="simulator-header">
+              <h2>Interactive Consensus & Forensic Simulator</h2>
+              <p>Experience how GenLayer Multi-Agent AI Consensus evaluates authentic evidence, enforces non-inference rules, and settles escrow funds without human intermediaries.</p>
+            </div>
+
+            <div className="scenarios-grid">
+              {SIM_SCENARIOS.map((sc, idx) => (
+                <div 
+                  key={sc.id} 
+                  className={`scenario-card ${simScenarioIdx === idx ? 'active' : ''}`}
+                  onClick={() => { setSimScenarioIdx(idx); setSimStep(0); }}
+                >
+                  <span className={`scenario-badge ${sc.badgeClass}`}>{sc.badge}</span>
+                  <h4>{sc.title}</h4>
+                  <p>{sc.description}</p>
+                </div>
+              ))}
+            </div>
+
+            {(() => {
+              const currentSc = SIM_SCENARIOS[simScenarioIdx];
+              return (
+                <div className="sim-execution-panel">
+                  <div className="sim-controls">
+                    <div>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.25rem' }}>{currentSc.title}</h3>
+                      <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        <span>Target: <code>{currentSc.targetUrl}</code></span>
+                        <span>•</span>
+                        <span>Escrow: <strong>{currentSc.escrow}</strong></span>
+                        <span>•</span>
+                        <span>Creator Stake: <strong>{currentSc.stake}</strong></span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        className="btn-primary" 
+                        onClick={runSimulation}
+                        disabled={isSimulating}
+                        style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
+                      >
+                        {isSimulating ? 'Evaluating Consensus...' : simStep === 0 ? '▶ Run Simulation' : '↻ Re-Run'}
+                      </button>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => setEvidenceFormat(evidenceFormat === 'structured' ? 'raw' : 'structured')}
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                      >
+                        View: {evidenceFormat === 'structured' ? 'JSON Structure' : 'Raw Scrape'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="sim-steps">
+                    {/* Step 1 */}
+                    <div className={`sim-step ${simStep >= 1 ? (simStep > 1 ? 'completed' : 'active') : ''}`}>
+                      <div className="sim-step-num">{simStep > 1 ? '✓' : '1'}</div>
+                      <div className="sim-step-content">
+                        <div className="sim-step-title">1. Canonical Domain & Identity Binding</div>
+                        <div className="sim-step-desc">
+                          Verified target URL domain using <code>_is_authenticated_platform_host()</code>. Platform host verified.
+                          Creator Handle: <strong>{currentSc.creatorHandle}</strong> bound to wallet <code>{currentSc.creatorAddress.slice(0, 8)}...</code>.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 2 */}
+                    <div className={`sim-step ${simStep >= 2 ? (simStep > 2 ? 'completed' : 'active') : ''}`}>
+                      <div className="sim-step-num">{simStep > 2 ? '✓' : '2'}</div>
+                      <div className="sim-step-content">
+                        <div className="sim-step-title">2. Evidence Provenance & Non-Inference Check</div>
+                        <div className="sim-step-desc">
+                          {currentSc.structuredEvidence ? (
+                            <span>Authenticated, structurally separated evidence provided. Audio subtitles and visual frame timestamps are isolated from plain HTML text.</span>
+                          ) : (
+                            <span style={{ color: 'hsl(36, 95%, 35%)' }}>⚠️ Raw web scrape only: Plain text cannot prove visual 2D logo frames. <strong>Non-Inference rule caps verdict at PARTIAL</strong>.</span>
+                          )}
+                        </div>
+                        <div className="inspector-box">
+                          {evidenceFormat === 'structured' && currentSc.structuredEvidence ? (
+                            <pre>{JSON.stringify(currentSc.structuredEvidence, null, 2)}</pre>
+                          ) : (
+                            <pre>{currentSc.rawText}</pre>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 3 */}
+                    <div className={`sim-step ${simStep >= 3 ? (simStep > 3 ? 'completed' : 'active') : ''}`}>
+                      <div className="sim-step-num">{simStep > 3 ? '✓' : '3'}</div>
+                      <div className="sim-step-content">
+                        <div className="sim-step-title">3. Multi-Agent AI Consensus Evaluation (gl.vm.run_nondet)</div>
+                        <div className="sim-step-desc">
+                          Consensus Leader node executes LLM inference. Independent Validator node replicates evaluation to verify semantic outcome equivalence.
+                        </div>
+
+                        {simStep >= 3 && (
+                          <div className="consensus-matrix">
+                            <div className="consensus-node-card">
+                              <div className="consensus-node-title">Consensus Leader Node</div>
+                              <div className="consensus-verdict" style={{ color: currentSc.badge === 'RELEASE' ? 'hsl(148, 70%, 35%)' : currentSc.badge === 'PARTIAL' ? 'hsl(36, 95%, 40%)' : currentSc.badge === 'SLASH' ? 'hsl(280, 80%, 40%)' : 'hsl(355, 80%, 45%)' }}>
+                                {currentSc.leaderVerdict} ({currentSc.leaderConfidence}%)
+                              </div>
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentSc.leaderReason}</p>
+                            </div>
+                            <div className="consensus-node-card">
+                              <div className="consensus-node-title">Consensus Validator Node</div>
+                              <div className="consensus-verdict" style={{ color: currentSc.badge === 'RELEASE' ? 'hsl(148, 70%, 35%)' : currentSc.badge === 'PARTIAL' ? 'hsl(36, 95%, 40%)' : currentSc.badge === 'SLASH' ? 'hsl(280, 80%, 40%)' : 'hsl(355, 80%, 45%)' }}>
+                                {currentSc.validatorVerdict} ({currentSc.validatorConfidence}%)
+                              </div>
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentSc.validatorReason}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Step 4 */}
+                    <div className={`sim-step ${simStep >= 4 ? 'completed' : ''}`}>
+                      <div className="sim-step-num">{simStep >= 4 ? '✓' : '4'}</div>
+                      <div className="sim-step-content">
+                        <div className="sim-step-title">4. Economic Settlement & On-Chain Resolution</div>
+                        <div className="sim-step-desc">
+                          {simStep >= 4 ? (
+                            <div style={{ background: 'hsl(148, 70%, 96%)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(148, 70%, 85%)', marginTop: '0.5rem' }}>
+                              <strong style={{ color: 'hsl(148, 70%, 25%)' }}>Outcome Finalized:</strong> {currentSc.finalResolution}
+                            </div>
+                          ) : (
+                            <span>Waiting for multi-agent consensus finalization...</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

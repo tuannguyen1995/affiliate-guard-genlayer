@@ -826,3 +826,294 @@ button {
   font-size: 0.85rem;
   font-weight: 500;
 }
+
+/* ---------------- Network Telemetry Banner ---------------- */
+.network-telemetry-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: hsl(220, 20%, 94%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 2rem;
+  font-size: 0.85rem;
+}
+
+.telemetry-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.telemetry-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.telemetry-dot.live {
+  background-color: hsl(148, 70%, 45%);
+  box-shadow: 0 0 8px hsl(148, 70%, 45%);
+}
+
+.telemetry-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.telemetry-value {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.telemetry-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 700;
+  background: rgba(37, 99, 235, 0.08);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s;
+}
+
+.telemetry-link:hover {
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.telemetry-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: hsl(148, 70%, 25%);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* ---------------- Consensus Simulator ---------------- */
+.simulator-container {
+  max-width: 1000px;
+  margin: 0 auto 4rem auto;
+}
+
+.simulator-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.simulator-header h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.simulator-header p {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.scenarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.scenario-card {
+  background: var(--bg-panel);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.scenario-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.scenario-card.active {
+  border-color: var(--primary);
+  background: hsl(221, 90%, 98%);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.scenario-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.75rem;
+}
+
+.badge-release {
+  background: hsl(148, 70%, 90%);
+  color: hsl(148, 70%, 25%);
+}
+
+.badge-partial {
+  background: hsl(36, 95%, 90%);
+  color: hsl(36, 95%, 30%);
+}
+
+.badge-refund {
+  background: hsl(355, 80%, 92%);
+  color: hsl(355, 80%, 35%);
+}
+
+.badge-slash {
+  background: hsl(280, 80%, 92%);
+  color: hsl(280, 80%, 35%);
+}
+
+.scenario-card h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+  color: var(--text-main);
+}
+
+.scenario-card p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.sim-execution-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-md);
+}
+
+.sim-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sim-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.sim-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem;
+  background: hsl(216, 22%, 98%);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--border-color);
+  transition: border-color 0.2s;
+}
+
+.sim-step.active {
+  border-left-color: var(--primary);
+  background: hsl(221, 90%, 99%);
+}
+
+.sim-step.completed {
+  border-left-color: hsl(148, 70%, 40%);
+}
+
+.sim-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: hsl(220, 15%, 88%);
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sim-step.active .sim-step-num {
+  background: var(--primary);
+  color: white;
+}
+
+.sim-step.completed .sim-step-num {
+  background: hsl(148, 70%, 40%);
+  color: white;
+}
+
+.sim-step-content {
+  flex: 1;
+}
+
+.sim-step-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-main);
+}
+
+.sim-step-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.inspector-box {
+  margin-top: 1rem;
+  background: hsl(220, 24%, 10%);
+  color: hsl(210, 40%, 96%);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  max-height: 220px;
+}
+
+.consensus-matrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.consensus-node-card {
+  background: hsl(220, 20%, 96%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+}
+
+.consensus-node-title {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.consensus-verdict {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+}
+
