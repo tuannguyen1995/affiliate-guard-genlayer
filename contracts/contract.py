@@ -1,10 +1,18 @@
-# v0.2.17
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 from dataclasses import dataclass
 import json
 
 UserError = getattr(getattr(gl, 'vm', None), 'UserError', globals().get('UserError', Exception))
+
+@allow_storage
+@dataclass
+class CreatorProfile:
+    reputation_score: bigint
+    completed_campaigns: bigint
+    disputed_campaigns: bigint
+    slashed_campaigns: bigint
+    tier: str
 
 @allow_storage
 @dataclass
@@ -35,11 +43,74 @@ class Contract(gl.Contract):
     campaigns: TreeMap[str, Campaign]
     campaign_ids: DynArray[str]
     creator_handles: TreeMap[str, str]
+    creator_profiles: TreeMap[str, CreatorProfile]
     owner: str
 
     def __init__(self):
         # DO NOT initialize TreeMap/DynArray here (Rule #2). GenVM automatically allocates memory.
         self.owner = str(gl.message.sender_address).lower()
+
+    def _get_or_create_profile(self, creator: str) -> CreatorProfile:
+        c_clean = str(creator).lower().strip()
+        if hasattr(self, "creator_profiles") and self.creator_profiles is not None and c_clean in self.creator_profiles:
+            return self.creator_profiles[c_clean]
+        return CreatorProfile(
+            reputation_score=bigint(100),
+            completed_campaigns=bigint(0),
+            disputed_campaigns=bigint(0),
+            slashed_campaigns=bigint(0),
+            tier="SILVER"
+        )
+
+    def _update_reputation(self, creator: str, score_delta: bigint, is_completed: bool = False, is_disputed: bool = False, is_slashed: bool = False) -> None:
+        c_clean = str(creator).lower().strip()
+        prof = self._get_or_create_profile(c_clean)
+        
+        new_score = prof.reputation_score + score_delta
+        if new_score < bigint(0):
+            new_score = bigint(0)
+        elif new_score > bigint(250):
+            new_score = bigint(250)
+            
+        completed = prof.completed_campaigns + (bigint(1) if is_completed else bigint(0))
+        disputed = prof.disputed_campaigns + (bigint(1) if is_disputed else bigint(0))
+        slashed = prof.slashed_campaigns + (bigint(1) if is_slashed else bigint(0))
+        
+        if new_score >= bigint(150):
+            tier = "GOLD"
+        elif new_score >= bigint(100):
+            tier = "SILVER"
+        else:
+            tier = "BRONZE"
+            
+        if not hasattr(self, "creator_profiles") or self.creator_profiles is None:
+            self.creator_profiles = TreeMap() if 'TreeMap' in globals() and callable(TreeMap) else {}
+            
+        self.creator_profiles[c_clean] = CreatorProfile(
+            reputation_score=new_score,
+            completed_campaigns=completed,
+            disputed_campaigns=disputed,
+            slashed_campaigns=slashed,
+            tier=tier
+        )
+
+    def _calculate_required_stake(self, escrow_amount: bigint, creator: str) -> bigint:
+        """Dynamic Tiered Staking:
+        - GOLD tier (score >= 150): 10% stake (escrow // 10)
+        - SILVER tier (score 100-149): 20% stake (escrow // 5)
+        - BRONZE tier (score < 100): 30% stake ((escrow * 3) // 10)
+        """
+        prof = self._get_or_create_profile(creator)
+        if prof.tier == "GOLD":
+            stake = escrow_amount // bigint(10)
+        elif prof.tier == "BRONZE":
+            stake = (escrow_amount * bigint(3)) // bigint(10)
+        else:
+            stake = escrow_amount // bigint(5)
+            
+        if stake <= bigint(0):
+            stake = bigint(1)
+        return stake
 
     def _safe_transfer(self, to_addr: str, amount: bigint) -> None:
         """Helper to transfer funds using native bigint without unsupported casting."""
@@ -156,7 +227,7 @@ class Contract(gl.Contract):
 
     @gl.public.write.payable
     def accept_campaign(self, campaign_id: str) -> None:
-        """Creator accepts campaign terms and deposits mandatory 20% stake (skin-in-the-game)"""
+        """Creator accepts campaign terms and deposits dynamic stake based on on-chain reputation tier"""
         if campaign_id not in self.campaigns:
             raise UserError("Campaign not found")
         campaign = self.campaigns[campaign_id]
@@ -167,9 +238,9 @@ class Contract(gl.Contract):
             raise UserError("Campaign is not pending acceptance")
             
         stake_amount = gl.message.value
-        min_required_stake = campaign.escrow_amount // bigint(5) # Enforce 20% minimum stake
+        min_required_stake = self._calculate_required_stake(campaign.escrow_amount, caller)
         if stake_amount < min_required_stake or stake_amount <= bigint(0):
-            raise UserError(f"Insufficient stake: Creator must stake at least 20% of escrow ({min_required_stake})")
+            raise UserError(f"Insufficient stake: Creator reputation tier requires at least {min_required_stake} wei")
             
         if hasattr(self, "creator_handles") and self.creator_handles and caller in self.creator_handles:
             campaign.creator_handle = self.creator_handles[caller]
@@ -599,12 +670,14 @@ class Contract(gl.Contract):
         if actual_verdict == "RELEASE":
             # Return creator's stake and release escrow amount to creator
             self._safe_transfer(campaign.creator, amount + stake)
+            self._update_reputation(campaign.creator, bigint(15), is_completed=True)
         elif actual_verdict == "PARTIAL":
             # Return creator's stake, pay half escrow to creator, half refund to brand
             half = amount // bigint(2)
             rem = amount - half
             self._safe_transfer(campaign.creator, half + stake)
             self._safe_transfer(campaign.brand, rem)
+            self._update_reputation(campaign.creator, bigint(5), is_completed=True)
         
         self.campaigns[campaign_id] = campaign
 
@@ -759,19 +832,23 @@ class Contract(gl.Contract):
         if resolution_upper == "RELEASE":
             # Award full payment + stake to creator
             self._safe_transfer(campaign.creator, amount + stake)
+            self._update_reputation(campaign.creator, bigint(15), is_completed=True)
         elif resolution_upper == "REFUND":
             # Refund escrow to brand, return stake to creator
             self._safe_transfer(campaign.brand, amount)
             self._safe_transfer(campaign.creator, stake)
+            self._update_reputation(campaign.creator, bigint(-25), is_disputed=True)
         elif resolution_upper == "SLASH":
             # Slashing determined BY VALIDATOR CONSENSUS on confirmed malicious fraud: Brand receives escrow + slashed creator stake
             self._safe_transfer(campaign.brand, amount + stake)
+            self._update_reputation(campaign.creator, bigint(-50), is_slashed=True)
         elif resolution_upper == "SPLIT":
             # Split escrow 50/50 and return stake to creator
             half = amount // bigint(2)
             rem = amount - half
             self._safe_transfer(campaign.creator, half + stake)
             self._safe_transfer(campaign.brand, rem)
+            self._update_reputation(campaign.creator, bigint(-10), is_disputed=True)
             
         self.campaigns[campaign_id] = campaign
 
@@ -890,3 +967,28 @@ class Contract(gl.Contract):
                     "logo_url": c.logo_url
                 })
         return json.dumps(all_campaigns)
+
+    @gl.public.view
+    def get_creator_profile(self, creator: str) -> str:
+        """Returns JSON representation of creator's on-chain reputation profile and tier."""
+        c_clean = str(creator).lower().strip()
+        prof = self._get_or_create_profile(c_clean)
+        stake_pct = 10 if prof.tier == "GOLD" else (30 if prof.tier == "BRONZE" else 20)
+        return json.dumps({
+            "creator": c_clean,
+            "reputation_score": str(prof.reputation_score),
+            "tier": prof.tier,
+            "completed_campaigns": str(prof.completed_campaigns),
+            "disputed_campaigns": str(prof.disputed_campaigns),
+            "slashed_campaigns": str(prof.slashed_campaigns),
+            "stake_percentage": stake_pct
+        })
+
+    @gl.public.view
+    def get_required_stake(self, campaign_id: str, creator: str) -> str:
+        """Returns the exact required stake in wei based on dynamic tier calculation."""
+        if campaign_id not in self.campaigns:
+            raise UserError("Campaign not found")
+        campaign = self.campaigns[campaign_id]
+        req_stake = self._calculate_required_stake(campaign.escrow_amount, creator)
+        return str(req_stake)

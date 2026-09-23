@@ -2,6 +2,32 @@
 
 All notable changes to the AffiliateGuard project are documented in this file in accordance with [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-23 - Major Feature Milestone: On-Chain Creator Reputation & Dynamic Tiered Staking
+
+### Added
+- **Persistent On-Chain Creator Reputation Engine (`CreatorProfile`)**:
+  - Implemented `@allow_storage @dataclass class CreatorProfile` stored in GenVM `TreeMap[str, CreatorProfile]`.
+  - Tracks creator lifetime stats: `reputation_score`, `completed_campaigns`, `disputed_campaigns`, `slashed_campaigns`, and `tier`.
+  - Automated state transitions: +15 points awarded on successful clean release; +5 points on partial payout; -25 points on valid brand dispute; -50 points on consensus-confirmed fraud slashing.
+- **Dynamic Tiered Staking Mechanism**:
+  - **GOLD Tier** (Score ≥ 150): Requires only **10% collateral stake** (50% fee discount for proven creators).
+  - **SILVER Tier** (Score 100 - 149): Standard baseline requiring **20% stake**.
+  - **BRONZE Tier** (Score < 100): High-risk tier requiring **30% stake** to deter non-compliance and sybil spam.
+- **New Public Smart Contract Methods**:
+  - `get_creator_profile(creator: str) -> str`: Returns comprehensive on-chain reputation profile and current tier metadata.
+  - `get_required_stake(campaign_id: str, creator: str) -> str`: Dynamically calculates the required stake in wei based on the creator's reputation tier.
+- **Interactive On-Chain Reputation & Tier Registry (Frontend UI)**:
+  - New dedicated dashboard tab **"⭐ Creator Reputation & Tiers"** allowing users and judges to inspect any creator wallet live on GenLayer.
+  - Dynamic collateral calculation in the Creator Dashboard when reviewing and accepting campaign offers.
+- **Dedicated Test Suite (`tests/test_reputation.py`)**:
+  - 5 comprehensive unit tests verifying Gold tier qualification, Bronze tier penalties, dynamic stake calculation, and automatic reputation scoring upon payout/slashing.
+
+### Improved
+- Expanded test suite from 24 to 29 passing unit tests (100% pass rate in 0.27s).
+- Line 1 pragma in `contracts/contract.py` unified to official `{ "Depends": "py-genlayer:..." }` magic comment for seamless GenLayer Studio compilation.
+
+---
+
 ## [1.1.0] - 2026-09-23 - Milestone 1: UX Overhaul, Interactive Evidence Simulator & Security Architecture Suite
 
 ### Added

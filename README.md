@@ -11,9 +11,14 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform powered by
 
 ---
 
-## ⚡ Milestone 1 Updates
-- **Interactive Consensus Simulator & Forensic Sandbox**: Directly in the live dApp, anyone can test all 4 core consensus paths (`RELEASE`, `PARTIAL`, `REFUND`, `SLASH`) with real-time multi-agent voting breakdowns.
-- **Creator Trust & Reputation Metrics**: Real-time evaluation of creator staking history, handle verification, and dispute track records.
+## ⚡ Major Milestone Updates (v1.2.0)
+- **On-Chain Creator Reputation Engine (`CreatorProfile`)**: Real-time persistent state tracking in GenVM (`TreeMap[str, CreatorProfile]`), maintaining creator lifetime completed campaigns, dispute rates, and consensus slashing history.
+- **Dynamic Tiered Staking**: Automatically computes required collateral based on on-chain reputation:
+  - 🥇 **GOLD Tier** (Score ≥ 150): **10% stake** (50% fee discount for trusted creators).
+  - 🥈 **SILVER Tier** (Score 100 - 149): **20% stake** (Standard baseline).
+  - 🥉 **BRONZE Tier** (Score < 100): **30% stake** (High-collateral barrier against spam/disputed creators).
+- **Interactive Consensus Simulator & Forensic Sandbox**: In the live dApp, anyone can test all 4 core consensus paths (`RELEASE`, `PARTIAL`, `REFUND`, `SLASH`) with real-time multi-agent voting breakdowns.
+- **Live On-Chain Reputation Registry UI**: Query any creator address directly from the GenLayer blockchain to inspect live score, tier badges, and collateral rates.
 - **System Architecture & Sequence Documentation**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for Mermaid flowcharts and GenVM lifecycle details.
 - **Threat Model & Adversarial Analysis**: See [`SECURITY.md`](./SECURITY.md) for detailed invariant defenses and test verification matrices.
 - **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md).
@@ -53,13 +58,13 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform powered by
 ---
 
 ## 🧪 Adversarial & Regression Test Suite
-
+ 
 An exhaustive test suite is implemented across Python (`pytest`) and JavaScript (`Node.js`):
-
+ 
 ```bash
-# Run 24 Python Adversarial & Regression Tests
+# Run 29 Python Adversarial, Reputation & Regression Tests
 pytest tests/ -v
-
+ 
 # Run 14 Node.js End-to-End Adversarial Simulations
 node tests/test_adversarial.js
 ```

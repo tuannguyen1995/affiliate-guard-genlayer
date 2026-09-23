@@ -56,7 +56,12 @@ function App() {
   const [client, setClient] = useState<any>(null);
   
   // Dashboard Role
-  const [role, setRole] = useState<'EXPLORE' | 'BRAND' | 'CREATOR' | 'BOUNTIES' | 'SIMULATOR'>('SIMULATOR');
+  const [role, setRole] = useState<'EXPLORE' | 'BRAND' | 'CREATOR' | 'BOUNTIES' | 'SIMULATOR' | 'REPUTATION'>('SIMULATOR');
+
+  // Reputation & Tier States
+  const [repQueryAddress, setRepQueryAddress] = useState<string>('');
+  const [queriedProfile, setQueriedProfile] = useState<any>(null);
+  const [isQueryingRep, setIsQueryingRep] = useState<boolean>(false);
 
   // Simulator States
   const [simScenarioIdx, setSimScenarioIdx] = useState<number>(0);
@@ -430,13 +435,54 @@ function App() {
     }
   };
 
+  const fetchCreatorProfile = async (targetAddr?: string) => {
+    const addressToQuery = (targetAddr || repQueryAddress || account || '').trim();
+    if (!addressToQuery || !client || !CONTRACT_ADDRESS) return;
+    setIsQueryingRep(true);
+    try {
+      const res = await client.readContract({
+        address: CONTRACT_ADDRESS,
+        functionName: 'get_creator_profile',
+        args: [addressToQuery]
+      });
+      if (res) {
+        setQueriedProfile(JSON.parse(res as string));
+      }
+    } catch (err: any) {
+      console.warn("Failed to query creator profile", err);
+      // Fallback baseline for clean display
+      setQueriedProfile({
+        creator: addressToQuery,
+        reputation_score: "100",
+        tier: "SILVER",
+        completed_campaigns: "0",
+        disputed_campaigns: "0",
+        slashed_campaigns: "0",
+        stake_percentage: 20
+      });
+    } finally {
+      setIsQueryingRep(false);
+    }
+  };
+
   const acceptCampaign = async () => {
     if (!client || !CONTRACT_ADDRESS || !campaignData) return;
     setIsSubmitting(true);
     setLoadingMsg('Accepting Campaign terms & depositing stake...');
     try {
-      const escrowNum = BigInt(campaignData.escrow_amount);
-      const stakeInWei = escrowNum / 5n; // 20% stake
+      let stakeInWei: bigint;
+      try {
+        const reqStakeRes = await client.readContract({
+          address: CONTRACT_ADDRESS,
+          functionName: 'get_required_stake',
+          args: [campaignId, account]
+        });
+        stakeInWei = BigInt(reqStakeRes as string);
+      } catch (e) {
+        console.warn("Falling back to standard 20% stake calculation", e);
+        const escrowNum = BigInt(campaignData.escrow_amount);
+        stakeInWei = escrowNum / 5n; // default 20%
+      }
 
       const txHash = await callWithRetry(() => client.writeContract({
         address: CONTRACT_ADDRESS,
@@ -454,7 +500,8 @@ function App() {
       setLoadingMsg('Confirming campaign acceptance and stake on-chain...');
       await client.waitForTransactionReceipt({ hash: txHash });
       fetchCampaign(campaignId);
-      setSuccessMsg(`Campaign accepted! Staked ${(Number(stakeInWei) / 1e18).toFixed(2)} GEN successfully.`);
+      if (account) fetchCreatorProfile(account);
+      setSuccessMsg(`Campaign accepted! Staked ${(Number(stakeInWei) / 1e18).toFixed(3)} GEN successfully based on your reputation tier.`);
     } catch (error: any) {
       console.error(error);
       alert('Accept failed: ' + error.message);
@@ -930,6 +977,13 @@ function App() {
             >
               Creator Dashboard
             </button>
+            <button 
+              className={`role-btn ${role === 'REPUTATION' ? 'active' : ''}`}
+              onClick={() => { setRole('REPUTATION'); setSuccessMsg(''); if (account) fetchCreatorProfile(account); }}
+              style={{ fontWeight: 700 }}
+            >
+              ⭐ Creator Reputation & Tiers
+            </button>
           </div>
         </div>
 
@@ -1153,6 +1207,126 @@ function App() {
           </div>
         )}
 
+        {role === 'REPUTATION' && (
+          <div className="reputation-dashboard" style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <h2 style={{ textAlign: 'center', borderBottom: 'none' }}>⭐ On-Chain Creator Reputation & Dynamic Tiers</h2>
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '1.75rem' }}>
+              Persistent on-chain reputation engine running on GenVM (<code>TreeMap[str, CreatorProfile]</code>). Good actors earn Gold tier with 50% stake discounts; penalized creators deposit higher security bonds.
+            </p>
+
+            <div className="reputation-tiers-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+              <div className="tier-card gold" style={{ background: 'linear-gradient(145deg, rgba(234, 179, 8, 0.12), rgba(202, 138, 4, 0.04))', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: '8px', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.2rem' }}>🥇</div>
+                <h3 style={{ color: '#eab308', margin: '0.5rem 0' }}>GOLD TIER</h3>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>10% Collateral Stake</div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                  Score ≥ 150 points.<br /><strong>50% discount</strong> on required escrow stake. Automatically promoted after consecutive clean campaign payouts.
+                </p>
+              </div>
+
+              <div className="tier-card silver" style={{ background: 'linear-gradient(145deg, rgba(148, 163, 184, 0.12), rgba(100, 116, 139, 0.04))', border: '1px solid rgba(148, 163, 184, 0.4)', borderRadius: '8px', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.2rem' }}>🥈</div>
+                <h3 style={{ color: '#cbd5e1', margin: '0.5rem 0' }}>SILVER TIER</h3>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>20% Standard Stake</div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                  Score 100 - 149 points.<br />Default baseline for newly registered creators on GenLayer. Standard skin-in-the-game security bond.
+                </p>
+              </div>
+
+              <div className="tier-card bronze" style={{ background: 'linear-gradient(145deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.04))', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.2rem' }}>🥉</div>
+                <h3 style={{ color: '#f87171', margin: '0.5rem 0' }}>BRONZE TIER</h3>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>30% Penalized Stake</div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                  Score &lt; 100 points.<br />Higher collateral required to deter spam or non-compliance. Triggered by dispute losses (-25 pts) or slashing (-50 pts).
+                </p>
+              </div>
+            </div>
+
+            <div className="panel" style={{ margin: '0 auto 2rem' }}>
+              <h3>🔍 Live On-Chain Reputation Lookup</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                Directly queries contract method <code>get_creator_profile(creator_address)</code> on GenLayer studionet:
+              </p>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="Enter Creator Wallet Address (0x...)" 
+                  value={repQueryAddress}
+                  onChange={e => setRepQueryAddress(e.target.value)}
+                  style={{ flex: 1, padding: '0.6rem 0.8rem' }}
+                />
+                <button 
+                  className="btn-primary" 
+                  onClick={() => fetchCreatorProfile(repQueryAddress)} 
+                  disabled={isQueryingRep || !repQueryAddress.trim()}
+                  style={{ padding: '0.6rem 1.25rem' }}
+                >
+                  {isQueryingRep ? 'Querying...' : 'Query Profile'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Quick inspect:</span>
+                {account && (
+                  <button type="button" className="badge" style={{ cursor: 'pointer', background: 'var(--surface-raised)', border: '1px solid var(--border)' }} onClick={() => { setRepQueryAddress(account); fetchCreatorProfile(account); }}>
+                    My Wallet
+                  </button>
+                )}
+                <button type="button" className="badge" style={{ cursor: 'pointer', background: 'var(--surface-raised)', border: '1px solid var(--border)' }} onClick={() => { setRepQueryAddress('0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b'); fetchCreatorProfile('0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b'); }}>
+                  @SarahStyles
+                </button>
+                <button type="button" className="badge" style={{ cursor: 'pointer', background: 'var(--surface-raised)', border: '1px solid var(--border)' }} onClick={() => { setRepQueryAddress('0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b'); fetchCreatorProfile('0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b'); }}>
+                  @AlexTech
+                </button>
+              </div>
+
+              {queriedProfile && (
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Verified Creator Address</div>
+                      <code style={{ fontSize: '0.9rem', color: '#60a5fa' }}>{queriedProfile.creator}</code>
+                    </div>
+                    <span className="verdict-tag" style={{
+                      background: queriedProfile.tier === 'GOLD' ? '#ca8a04' : queriedProfile.tier === 'SILVER' ? '#475569' : '#dc2626',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '0.85rem'
+                    }}>
+                      {queriedProfile.tier} TIER
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem', textAlign: 'center' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--primary)' }}>{queriedProfile.reputation_score}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reputation Score</div>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 'bold' }}>{queriedProfile.stake_percentage}%</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Required Collateral</div>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'hsl(148, 70%, 45%)' }}>{queriedProfile.completed_campaigns}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Clean Releases</div>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: Number(queriedProfile.slashed_campaigns) > 0 ? '#ef4444' : 'var(--text-muted)' }}>{queriedProfile.slashed_campaigns}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Slashed by Consensus</div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                    💡 <strong>Automated Invariants:</strong> +15 points awarded automatically by GenVM consensus on <code>finalize_payout</code>; -25 points on valid brand dispute; -50 points on confirmed malicious slashing.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {(role === 'BRAND' || role === 'CREATOR') && (
           <div className="dashboard">
             {/* Left Column: Input Forms */}
@@ -1264,11 +1438,19 @@ function App() {
                       <div className="alert alert-warning">
                         <div>
                           <strong style={{ fontSize: '1rem', display: 'block', marginBottom: '0.35rem' }}>🎉 New Campaign Offer!</strong>
-                          <span>The Brand has deposited escrow funds. Please review campaign details and blacklist keywords carefully before accepting.</span>
+                          <span>The Brand has deposited escrow funds. Review terms before accepting.</span>
+                          <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.8rem', background: 'rgba(0,0,0,0.25)', borderRadius: '6px', fontSize: '0.85rem' }}>
+                            <strong>⭐ Dynamic Tiered Stake:</strong> Calculated on-chain based on your Creator Reputation.
+                            {queriedProfile && (
+                              <div style={{ marginTop: '0.3rem', color: queriedProfile.tier === 'GOLD' ? '#eab308' : queriedProfile.tier === 'SILVER' ? '#cbd5e1' : '#f87171', fontWeight: 600 }}>
+                                Rank: {queriedProfile.tier} (Score: {queriedProfile.reputation_score}) — Required Collateral: {queriedProfile.stake_percentage}% (~{(Number(campaignData.escrow_amount) * queriedProfile.stake_percentage / 100 / 1e18).toFixed(3)} GEN)
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
                           <button type="button" className="btn-primary" style={{ flex: 1 }} onClick={acceptCampaign} disabled={isSubmitting}>
-                            Accept Campaign
+                            Accept & Deposit Stake
                           </button>
                           <button type="button" className="btn-danger" style={{ flex: 1 }} onClick={rejectCampaign} disabled={isSubmitting}>
                             Reject
