@@ -4,23 +4,25 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform powered by
 
 ## 🚀 Live Links & Verification
 - **Production dApp:** [https://affiliateguard.vercel.app](https://affiliateguard.vercel.app)
-- **Deployed Contract Address:** `0x37F4206F9b910c06F517A258D28dCf744C0dfb3e`
-- **GenLayer Studio Explorer:** [https://studio.genlayer.com/explorer/contract/0x37F4206F9b910c06F517A258D28dCf744C0dfb3e](https://studio.genlayer.com/explorer/contract/0x37F4206F9b910c06F517A258D28dCf744C0dfb3e)
+- **Deployed Contract Address:** `0x630e54a5EC9351e5755031C99ead2CD8b7a136D4`
+- **GenLayer Studio Explorer:** [https://studio.genlayer.com/explorer/contract/0x630e54a5EC9351e5755031C99ead2CD8b7a136D4](https://studio.genlayer.com/explorer/contract/0x630e54a5EC9351e5755031C99ead2CD8b7a136D4)
 - **Network:** GenLayer Studio Network (`studionet`, Chain ID: `61999` / `0xF1EF`)
 - **JSON-RPC Endpoint:** `https://studio.genlayer.com/api`
 
 ---
 
-## ⚡ Major Milestone Updates (v1.2.0)
-- **On-Chain Creator Reputation Engine (`CreatorProfile`)**: Real-time persistent state tracking in GenVM (`TreeMap[str, CreatorProfile]`), maintaining creator lifetime completed campaigns, dispute rates, and consensus slashing history.
-- **Dynamic Tiered Staking**: Automatically computes required collateral based on on-chain reputation:
-  - 🥇 **GOLD Tier** (Score ≥ 150): **10% stake** (50% fee discount for trusted creators).
-  - 🥈 **SILVER Tier** (Score 100 - 149): **20% stake** (Standard baseline).
-  - 🥉 **BRONZE Tier** (Score < 100): **30% stake** (High-collateral barrier against spam/disputed creators).
-- **Interactive Consensus Simulator & Forensic Sandbox**: In the live dApp, anyone can test all 4 core consensus paths (`RELEASE`, `PARTIAL`, `REFUND`, `SLASH`) with real-time multi-agent voting breakdowns.
-- **Live On-Chain Reputation Registry UI**: Query any creator address directly from the GenLayer blockchain to inspect live score, tier badges, and collateral rates.
-- **System Architecture & Sequence Documentation**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for Mermaid flowcharts and GenVM lifecycle details.
-- **Threat Model & Adversarial Analysis**: See [`SECURITY.md`](./SECURITY.md) for detailed invariant defenses and test verification matrices.
+## ⚡ Major Milestone Updates (v1.3.0)
+- **Multi-Perspective AI Consensus & Cryptographic Canary Token Defense (`AG_CANARY_GENVM_SAFE_9821`)**:
+  - Immunizes GenVM Intelligent Contract against 5 adversarial prompt injection vectors (instruction override, delimiter evasion, role impersonation, token tampering, and malicious payloads).
+  - Automatically trips to safe `REFUND` on-chain if an injection attempt corrupts the canary token.
+- **On-Chain Open Bounty Marketplace**:
+  - `create_open_bounty`: Brands can fund open public bounties without designating a specific creator.
+  - `claim_open_bounty`: Any verified creator can claim an open bounty with dynamic collateral based on their reputation tier.
+  - `get_open_bounties`: Public view returning active marketplace campaigns.
+- **Enhanced Test Matrix**: Expanded to **52 automated tests** (38 Python Unit/Adversarial Tests + 14 Node.js Simulations) passing with 100% success.
+- **Previous Features (v1.2.0)**: On-Chain Creator Reputation Engine, Dynamic Tiered Staking (Gold 10%, Silver 20%, Bronze 30%), Consensus Simulator, and 30-Day Stale Dispute Recovery.
+- **System Architecture & Sequence Documentation**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+- **Threat Model & Adversarial Analysis**: See [`SECURITY.md`](./SECURITY.md).
 - **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---

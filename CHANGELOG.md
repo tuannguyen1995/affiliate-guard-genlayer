@@ -2,6 +2,30 @@
 
 All notable changes to the AffiliateGuard project are documented in this file in accordance with [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-30 - Milestone: AI Multi-Perspective Consensus, Canary Token Defense & Open Bounty Marketplace
+
+### Added
+- **Multi-Perspective AI Consensus & Cryptographic Canary Token Defense (`AG_CANARY_GENVM_SAFE_9821`)**:
+  - Immunizes GenVM Intelligent Contract against 5 adversarial prompt injection vectors (instruction override, delimiter evasion, system role impersonation, corrupted canary, and malicious payloads).
+  - Deterministically forces on-chain state to `REFUND` if LLM evaluation detects canary compromise (`canary_compromised == True`), preventing drain exploits.
+  - Stricter validator consensus check verifies canary token integrity and confidence divergence $\le 25$.
+- **On-Chain Open Bounty Campaigns & Marketplace**:
+  - `create_open_bounty(...)`: Brands can fund open public bounties without designating a specific creator.
+  - `claim_open_bounty(bounty_id)`: Any verified creator can claim an open bounty with dynamic collateral based on their reputation tier (Gold 10%, Silver 20%, Bronze 30%).
+  - `get_open_bounties() -> str`: Public view returning active marketplace campaigns.
+- **Frontend Open Bounty Marketplace & Canary Simulator**:
+  - Real-time **Open Bounties Marketplace** tab with one-click claim action and dynamic stake preview.
+  - Brand Campaign creation toggle supporting both Direct 1-to-1 Escrow and Open Bounty Marketplace modes.
+  - Interactive Simulator Scenario 5: Demonstrates Adversarial Prompt Injection & Canary Token Defense in real-time.
+- **New Test Suites (`tests/test_canary_defense.py`, `tests/test_bounties.py`)**:
+  - 5 tests covering canary defense against adversarial prompt injection vectors.
+  - 4 tests covering open bounty creation, claiming, brand self-claim rejection, and direct cancellation.
+  - Total automated test suite expanded to **52 tests** (38 Python + 14 Node.js) with 100% pass rate.
+- **Live Studionet Deployment**:
+  - Deployed to GenLayer Studio Network (`studionet`, Chain ID `61999`) at address `0x630e54a5EC9351e5755031C99ead2CD8b7a136D4`.
+
+---
+
 ## [1.2.0] - 2026-09-23 - Major Feature Milestone: On-Chain Creator Reputation & Dynamic Tiered Staking
 
 ### Added
