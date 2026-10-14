@@ -11,16 +11,21 @@ AffiliateGuard is a decentralized affiliate marketing escrow platform powered by
 
 ---
 
-## ⚡ Major Milestone Updates (v1.3.0)
-- **Multi-Perspective AI Consensus & Cryptographic Canary Token Defense (`AG_CANARY_GENVM_SAFE_9821`)**:
-  - Immunizes GenVM Intelligent Contract against 5 adversarial prompt injection vectors (instruction override, delimiter evasion, role impersonation, token tampering, and malicious payloads).
-  - Automatically trips to safe `REFUND` on-chain if an injection attempt corrupts the canary token.
-- **On-Chain Open Bounty Marketplace**:
-  - `create_open_bounty`: Brands can fund open public bounties without designating a specific creator.
-  - `claim_open_bounty`: Any verified creator can claim an open bounty with dynamic collateral based on their reputation tier.
-  - `get_open_bounties`: Public view returning active marketplace campaigns.
-- **Enhanced Test Matrix**: Expanded to **52 automated tests** (38 Python Unit/Adversarial Tests + 14 Node.js Simulations) passing with 100% success.
-- **Previous Features (v1.2.0)**: On-Chain Creator Reputation Engine, Dynamic Tiered Staking (Gold 10%, Silver 20%, Bronze 30%), Consensus Simulator, and 30-Day Stale Dispute Recovery.
+## ⚡ Major Milestone Updates (v2.0.0)
+- **Multi-Perspective Ensemble AI Juror Architecture**:
+  - Restructured GenVM non-deterministic consensus into 3 specialized concurrent perspectives: **Forensic Juror** (domain & wallet identity binding), **Brand Compliance Juror** (product, CTA, visual logo, zero blacklist), and **Security Juror** (cryptographic canary `AG_CANARY_GENVM_SAFE_9821` & prompt injection defense).
+  - Added Simulator Scenario 6 in the Frontend dApp demonstrating 3-Juror Ensemble consensus.
+- **On-Chain Soulbound Achievement Badges (`creator_badges: TreeMap[str, DynArray[str]]`)**:
+  - Non-transferable on-chain proof of delivery minted directly into GenVM contract storage.
+  - Automatically awarded on `finalize_payout` for `FIRST_BLOOD`, `GOLD_TIER`, `DISPUTE_FREE`, `HIGH_ROLLER`, and `SECURITY_VERIFIED`.
+  - Interactive **Soulbound Badges Showcase** in the Reputation dashboard tab.
+- **Live Protocol Analytics Engine (`get_protocol_analytics`)**:
+  - On-chain metrics engine returning total settled volume (TVL), managed campaigns, open bounties, disputes, and slashing deterrence.
+  - Real-time telemetry ticker bar displayed in the Frontend UI.
+- **Forensic Audit Certificate Exporter**:
+  - Built-in one-click cryptographic JSON certificate exporter for institutional brand compliance and dispute auditing.
+- **Automated Test Matrix Expanded**: **56 automated tests** (42 Python Unit/Adversarial Tests + 14 Node.js Simulations) passing with 100% success.
+- **Previous Features**: On-Chain Creator Reputation Engine, Dynamic Tiered Staking (Gold 10%, Silver 20%, Bronze 30%), Open Bounty Marketplace, Canary Token Defense, and 30-Day Stale Dispute Recovery.
 - **System Architecture & Sequence Documentation**: See [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 - **Threat Model & Adversarial Analysis**: See [`SECURITY.md`](./SECURITY.md).
 - **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md).

@@ -1117,3 +1117,143 @@ button {
   margin-bottom: 0.25rem;
 }
 
+/* Protocol Analytics Ticker Bar */
+.protocol-analytics-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  background: linear-gradient(135deg, hsl(222, 47%, 11%), hsl(222, 47%, 16%));
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+  margin: 1.5rem 0 2rem;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.analytics-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.analytics-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(215, 20%, 65%);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.analytics-stat-val {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.analytics-stat-sub {
+  font-size: 0.72rem;
+  color: hsl(215, 20%, 75%);
+}
+
+/* Soulbound Badges Showcase */
+.badges-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.badge-item-card {
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  transition: all 0.25s ease;
+}
+
+.badge-item-card.badge-unlocked {
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.08), rgba(6, 95, 70, 0.04));
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.1);
+}
+
+.badge-item-card.badge-locked {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color);
+  opacity: 0.65;
+}
+
+.badge-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge-item-icon {
+  font-size: 2rem;
+}
+
+.badge-status-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.badge-status-pill.unlocked {
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.badge-status-pill.locked {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+}
+
+.badge-item-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.badge-item-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Audit Certificate Button */
+.btn-certificate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, hsl(217, 91%, 60%), hsl(224, 76%, 48%));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.btn-certificate:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+

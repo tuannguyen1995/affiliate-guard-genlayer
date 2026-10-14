@@ -2,6 +2,37 @@
 
 All notable changes to the AffiliateGuard project are documented in this file in accordance with [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-15 - Mega Milestone v2: Multi-Perspective Ensemble AI Juror, On-Chain Soulbound Badges & Protocol Analytics Engine
+
+### Added
+- **Multi-Perspective Ensemble AI Juror Architecture**:
+  - Restructured GenVM non-deterministic consensus prompt (`submit_video`) into 3 specialized concurrent perspectives:
+    1. **Forensic Juror**: Verifies canonical platform domain, registered creator handle, and wallet identity binding.
+    2. **Brand Compliance Juror**: Validates target product, required CTA, multilingual subtitles, visual brand logo, and zero blacklisted terms.
+    3. **Security Juror**: Enforces cryptographic canary token (`AG_CANARY_GENVM_SAFE_9821`) integrity and neutralizes prompt injection / jailbreak overrides.
+  - Added Simulator Scenario 6: Demonstrates unanimous 3-Juror Ensemble Consensus with 99% confidence resolution.
+- **On-Chain Soulbound Achievement Badges (`creator_badges: TreeMap[str, DynArray[str]]`)**:
+  - Native GenVM on-chain badge system minting non-transferable reputation credentials directly into contract storage.
+  - Deterministic automatic minting on `finalize_payout`:
+    - `FIRST_BLOOD`: Awarded on creator's first successful clean campaign release.
+    - `GOLD_TIER`: Unlocked upon reaching Gold Tier status (Reputation score $\ge 150$).
+    - `DISPUTE_FREE`: Awarded to creators with $\ge 3$ completed campaigns and zero brand disputes.
+    - `HIGH_ROLLER`: Earned by successfully fulfilling single campaigns with escrow $\ge 5.0$ GEN.
+    - `SECURITY_VERIFIED`: Unlocked upon binding social handle and wallet on-chain.
+  - New public contract view: `get_creator_badges(creator: str) -> str`.
+  - Interactive **Soulbound Badges Showcase** in the Reputation dashboard tab featuring dynamic unlocked/locked visual cards.
+- **Live Protocol Analytics Engine**:
+  - New public contract method `get_protocol_analytics() -> str`: Aggregates on-chain TVL, completed escrow volume, active marketplace bounties, dispute count, and cumulative slashed stake deterrence.
+  - Real-time telemetry ticker bar embedded in the Frontend UI displaying live protocol metrics and consensus invariants.
+- **Forensic Consensus Audit Certificate Exporter**:
+  - Built-in one-click forensic audit certificate exporter (JSON) in the Campaign Verdict viewer and Simulator.
+  - Packages cryptographic consensus metadata, juror findings, canary validation status, and settlement metrics for institutional brand auditing.
+- **Expanded Test Suite (`tests/test_badges_and_stages.py`)**:
+  - 4 new unit tests verifying badge awards, dynamic analytics aggregation, and stage transitions.
+  - Complete automated test suite expanded to **56 passing tests** (42 Python unit tests + 14 Node.js simulation tests) with 100% pass rate.
+
+---
+
 ## [1.3.0] - 2026-09-30 - Milestone: AI Multi-Perspective Consensus, Canary Token Defense & Open Bounty Marketplace
 
 ### Added
