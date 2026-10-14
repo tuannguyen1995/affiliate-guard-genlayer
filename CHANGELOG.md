@@ -29,7 +29,9 @@ All notable changes to the AffiliateGuard project are documented in this file in
   - Packages cryptographic consensus metadata, juror findings, canary validation status, and settlement metrics for institutional brand auditing.
 - **Expanded Test Suite (`tests/test_badges_and_stages.py`)**:
   - 4 new unit tests verifying badge awards, dynamic analytics aggregation, and stage transitions.
-  - Complete automated test suite expanded to **56 passing tests** (42 Python unit tests + 14 Node.js simulation tests) with 100% pass rate.
+- **Live Studionet Deployment**:
+  - Deployed to GenLayer Studio Network (`studionet`, Chain ID `61999`) at address `0x764f30bB273147c4BF6000FBe050eEc2f4f3B328`.
+  - Verified on GenLayer Studio Explorer with full ABI and state inspectability for badges and protocol analytics.
 
 ---
 
